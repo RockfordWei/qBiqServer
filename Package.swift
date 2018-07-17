@@ -15,7 +15,7 @@ let package = Package(
 		.package(url: "https://github.com/PerfectlySoft/Perfect-CRUD.git", from: "1.0.0"),
 		.package(url: "https://github.com/PerfectlySoft/Perfect-Notifications.git", from: "3.0.0"),
 		.package(url: "https://github.com/PerfectlySoft/Perfect-Redis.git", from: "3.2.0"),
-		.package(url: "https://github.com/kjessup/BiqSwiftCodables.git", .branch("master")),
+		.package(url: "https://github.com/ubiqweus/qBiqSwiftCodables.git", .branch("master")),
 		.package(url: "https://github.com/kjessup/SAuthCodables.git", .branch("master")),
 	],
 	targets: [
