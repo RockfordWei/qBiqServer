@@ -34,10 +34,8 @@ let notificationsProduction = false
 let notificationsProduction = true
 #endif
 
-let notificationsKeyId = "TJ9DMUXYGD"
-let notificationsTeamId = "L2NAZNC754"
-let notificationsTopic = "Treefrog.qbiq"
-let notificationsKeyName = "AuthKey_TJ9DMUXYGD.p8"
+// !FIX! remove this as a mutable global
+var notificationsTopic = "unconfigured"
 
 let deviceShareTokenExpirationDays = 15
 
@@ -94,6 +92,7 @@ func configureNotifications() throws {
 	guard let n = config.notifications else {
 		return
 	}
+	notificationsTopic = n.topic
 	NotificationPusher.addConfigurationAPNS(
 		name: notificationsConfigName,
 		production: n.production,
