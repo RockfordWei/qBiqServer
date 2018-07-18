@@ -9,6 +9,7 @@ The functionality includes:
 * Update device settings
 * Assign device limits
 * Retrieve device observations
+* Group/ungroup devices
 
 ### Authentication
 
@@ -27,7 +28,7 @@ All requests must be made over HTTPS. Some responses are noted as "Empty". This 
 |Endpoint URI	|Method	|Input	|Output|Description|
 |--------------|-------|-------|------|-----------|
 |/v1/device/register|POST|[RegisterRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO15RegisterRequesta)|[BiqDevice](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDevice.html)|X|
-|<td colspan="4">Registers the device as belonging to the current user. It is *not* an error if the device is already registered to the current user or any other user. In any case the device's `ownerId` property will indicate if the registration was successful. If the device is registered to someone else this property will be nil. An error will be generated if the specified device does not exist.</td>|
+||||Registers the device as belonging to the current user. It is *not* an error if the device is already registered to the current user or any other user. In any case the device's `ownerId` property will indicate if the registration was successful. If the device is registered to someone else this property will be nil. An error will be generated if the specified device does not exist.|
 |/v1/device/unregister|POST|[RegisterRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO15RegisterRequesta)|Empty|Words|
 |/v1/device/limits	|POST|[UpdateLimitsRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/UpdateLimitsRequest.html)|[DeviceLimitsResponse](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO0C14LimitsResponsea)|Words|
 |/v1/device/update|POST|[UpdateRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/UpdateRequest.html)|Empty|Words|
