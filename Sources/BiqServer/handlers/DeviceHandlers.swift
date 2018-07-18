@@ -276,6 +276,7 @@ struct DeviceHandlers {
 				throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
 			}
 			// clear out owner's info
+			// this is sql because of the bit flip op
 			try db.sql(
 				"""
 				update biqdevice
@@ -343,9 +344,12 @@ struct DeviceHandlers {
 		let deviceId = shareRequest.deviceId
 		let db = try biqDatabaseInfo.deviceDb()
 		try db.transaction {
-			try db.table(BiqDeviceAccessPermission.self)
+			let accessTableMatch = db.table(BiqDeviceAccessPermission.self)
 				.where(\BiqDeviceAccessPermission.userId == session.id && \BiqDeviceAccessPermission.deviceId == deviceId)
-				.delete()
+			guard try accessTableMatch.count() != 0 else {
+				throw HTTPResponseError(status: .badRequest, description: "Not a shared device.")
+			}
+			try accessTableMatch.delete()
 			try db.table(BiqDeviceLimit.self)
 				.where(\BiqDeviceLimit.userId == session.id && \BiqDeviceLimit.deviceId == deviceId)
 				.delete()
