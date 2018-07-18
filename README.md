@@ -25,32 +25,146 @@ All requests must be made over HTTPS. Some responses are noted as "Empty". This 
 
 ### Device API
 
-|Endpoint URI	|Method	|Input	|Output|Description|
-|--------------|-------|-------|------|-----------|
-|/v1/device/register|POST|[RegisterRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO15RegisterRequesta)|[BiqDevice](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDevice.html)|X|
-|Registers the device as belonging to the current user. It is *not* an error if the device is already registered to the current user or any other user. In any case the device's `ownerId` property will indicate if the registration was successful. If the device is registered to someone else this property will be nil. An error will be generated if the specified device does not exist.||||||||||
-|/v1/device/unregister|POST|[RegisterRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO15RegisterRequesta)|Empty|Words|
-|/v1/device/limits	|POST|[UpdateLimitsRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/UpdateLimitsRequest.html)|[DeviceLimitsResponse](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO0C14LimitsResponsea)|Words|
-|/v1/device/update|POST|[UpdateRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/UpdateRequest.html)|Empty|Words|
-|/v1/device/share|POST|[ShareRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ShareRequest.html)|[BiqDevice](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDevice.html)|Words|
-|/v1/device/share/token|POST|[ShareTokenRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ShareTokenRequest.html)|[ShareTokenResponse](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ShareTokenResponse.html)|Words|
-|/v1/device/unshare|POST|[ShareRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ShareRequest.html)|Empty|Words|
-|/v1/device/obs/delete|POST|[GenericDeviceRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/GenericDeviceRequest.html)|Empty|Words|
-|/v1/device/limits|GET|[LimitsRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO13LimitsRequesta)|[DeviceLimitsResponse](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO0C14LimitsResponsea)|Words|
-|/v1/device/list|GET|-|[[ListDevicesResponseItem]](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ListDevicesResponseItem.html)|Words|
-|/v1/device/info|GET|[GenericDeviceRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/GenericDeviceRequest.html)|[BiqDevice](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDevice.html)|Words|
-|/v1/device/obs|GET|[ObsRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ObsRequest.html)|[[BiqObservation]](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/ObsDatabase/BiqObservation.html)|Words|
+<table>
+<tr><th>Endpoint URI</th><th>Method</th><th>Input</th><th>Output</th></tr>
+<tr>
+<td>/v1/device/register</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO15RegisterRequesta">RegisterRequest</a></td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDevice.html">BiqDevice</a></td>
+</tr>
+<tr><td colspan=4>Registers the device as belonging to the current user. It is *not* an error if the device is already registered to the current user or any other user. In any case the device's `ownerId` property will indicate if the registration was successful. If the device is registered to someone else this property will be nil. An error will be generated if the specified device id is not valid.</td>
+</tr>
+<tr><td>/v1/device/unregister</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO15RegisterRequesta">RegisterRequest</a></td>
+<td>Empty</td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/limits	</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/UpdateLimitsRequest.html">UpdateLimitsRequest</a></td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO0C14LimitsResponsea">DeviceLimitsResponse</a></td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/update</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/UpdateRequest.html">UpdateRequest</a></td>
+<td>Empty</td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/share</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ShareRequest.html">ShareRequest</a></td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDevice.html">BiqDevice</a></td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/share/token</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ShareTokenRequest.html">ShareTokenRequest</a></td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ShareTokenResponse.html">ShareTokenResponse</a></td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/unshare</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ShareRequest.html">ShareRequest</a></td>
+<td>Empty</td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/obs/delete</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/GenericDeviceRequest.html">GenericDeviceRequest</a></td>
+<td>Empty</td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/limits</td>
+<td>GET</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO13LimitsRequesta">LimitsRequest</a></td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI.html#/s:13SwiftCodables9DeviceAPIO0C14LimitsResponsea">DeviceLimitsResponse</a></td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/list</td>
+<td>GET</td>
+<td>-</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ListDevicesResponseItem.html">[ListDevicesResponseItem]</a></td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/info</td>
+<td>GET</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/GenericDeviceRequest.html">GenericDeviceRequest</a></td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDevice.html">BiqDevice</a></td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/device/obs</td>
+<td>GET</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/DeviceAPI/ObsRequest.html">ObsRequest</a></td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/ObsDatabase/BiqObservation.html">[BiqObservation]</a></td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+</table>
 
 ### Group API  
-|Endpoint URI	|Method	|Input	|Output|Description|
-|--------------|-------|-------|------|-----------|
-|/v1/group/create|POST|[CreateRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/CreateRequest.html)|[BiqDeviceGroup](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDeviceGroup.html)|Words|
-|/v1/group/device/add|POST|[AddDeviceRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/AddDeviceRequest.html)|Empty|Words|
-|/v1/group/device/remove|POST|[AddDeviceRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/AddDeviceRequest.html)|Empty|Words|
-|/v1/group/delete|POST|[DeleteRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/DeleteRequest.html)|Empty|Words|
-|/v1/group/update|POST|[UpdateRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/UpdateRequest.html)|Empty|Words|
-|/v1/group/device/list|GET|[ListDevicesRequest](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/ListDevicesRequest.html)|[[BiqDevice]](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDevice.html)|Words|
-|/v1/group/list|GET|-|[[BiqDeviceGroup]](https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDeviceGroup.html)|Words|
+<table>
+<tr><th>Endpoint URI</th><th>Method</th><th>Input</th><th>Output</th></tr>
+<tr><td>/v1/group/create</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/CreateRequest.html">CreateRequest</a></td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDeviceGroup.html">BiqDeviceGroup</a></td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/group/device/add</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/AddDeviceRequest.html">AddDeviceRequest</a></td>
+<td>Empty</td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/group/device/remove</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/AddDeviceRequest.html">AddDeviceRequest</a></td>
+<td>Empty</td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/group/delete</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/DeleteRequest.html">DeleteRequest</a></td>
+<td>Empty</td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/group/update</td>
+<td>POST</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/UpdateRequest.html">UpdateRequest</a></td>
+<td>Empty</td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/group/device/list</td>
+<td>GET</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Enums/GroupAPI/ListDevicesRequest.html">ListDevicesRequest</a></td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDevice.html">[BiqDevice]</a></td>
+</tr>
+<tr><td colspan=4></td>
+</tr>
+<tr><td>/v1/group/list</td>
+<td>GET</td>
+<td>-</td>
+<td><a href="https://htmlpreview.github.io/?https://raw.githubusercontent.com/ubiqweus/qBiqSwiftCodables/master/docs/Structs/BiqDeviceGroup.html">[BiqDeviceGroup]</a></td>
+</tr>
+</table>
 
 ### API Errors
 
