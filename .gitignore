@@ -70,5 +70,4 @@ Package.swift.orig
 .packages_lin
 .DS_Store
 Package.resolved
-webroot/
 config/

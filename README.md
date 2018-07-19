@@ -1,3 +1,5 @@
+![](webroot/images/ubiqweus-logo-colour@2x.png)
+
 # qBiqServer
 ## API server for qBiq based apps
 
