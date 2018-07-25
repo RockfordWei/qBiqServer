@@ -168,9 +168,7 @@ struct ProcessingObs: RedisProcessingItem {
 }
 extension BiqDeviceLimit {
 	func valueFromObs(_ obs: ObsDatabase.BiqObservation) -> Double {
-		guard let t = type else {
-			return 0.0
-		}
+		let t = type
 		if t == .tempHigh {
 			return obs.temp
 		}

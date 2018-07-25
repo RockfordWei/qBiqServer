@@ -130,11 +130,11 @@ func secsToBeginningOfDay(_ secs: Double) -> Double {
 let fakeShareIds = ["UBIQTF1111", "UBIQTF2222", "UBIQTF3333", "UBIQTF4444"]
 let defaultReportInterval = Float(3600.0)
 let defaultLimits: [DeviceAPI.DeviceLimit] = [
-	.init(limitType: .tempHigh, limitValue: 28.0),
-	.init(limitType: .tempLow, limitValue: 12.0),
-	.init(limitType: .movementLevel, limitValue: 1.0),
-	.init(limitType: .batteryLevel, limitValue: 10.0),
-	.init(limitType: .interval, limitValue: defaultReportInterval),
+	.init(limitType: .tempHigh, limitValue: 28.0, limitFlag: .none),
+	.init(limitType: .tempLow, limitValue: 12.0, limitFlag: .none),
+	.init(limitType: .movementLevel, limitValue: 1.0, limitFlag: .none),
+	.init(limitType: .batteryLevel, limitValue: 10.0, limitFlag: .none),
+	.init(limitType: .interval, limitValue: defaultReportInterval, limitFlag: .none),
 ]
 
 private func userHasDeviceAccess<C: DatabaseConfigurationProtocol>(db: Database<C>, deviceId: DeviceURN, userId: UserId) throws -> BiqDevice? {
@@ -157,15 +157,20 @@ struct DeviceHandlers {
 								  deviceId: DeviceURN,
 								  ownerId: UserId,
 								  userId: UserId) throws -> [DeviceAPI.DeviceLimit] {
-		let limitsTable = db.table(BiqDeviceLimit.self)
-		let userLimits = try limitsTable.where(
-			\BiqDeviceLimit.deviceId == deviceId &&
-				\BiqDeviceLimit.userId == userId).select()
+		let sql =
+			"""
+			SELECT * FROM \(BiqDeviceLimit.CRUDTableName)
+			WHERE deviceid = $1
+				AND (userid = $2 OR (userid = $3 AND 0 != (limitflag & \(BiqDeviceLimitFlag.ownerShared.rawValue))))
+			"""
+		let userLimits = try db.sql(sql,
+									bindings: [("$1", .string(deviceId)), ("$2", .uuid(userId)), ("$3", .uuid(ownerId))],
+									BiqDeviceLimit.self)
 		return userLimits.compactMap {
-			guard let t = $0.type else {
-				return nil
-			}
-			return DeviceAPI.DeviceLimit(limitType: t, limitValue: $0.limitValue, limitValueString: $0.limitValueString)
+			return DeviceAPI.DeviceLimit(limitType: $0.type,
+										 limitValue: $0.limitValue,
+										 limitValueString: $0.limitValueString,
+										 limitFlag: $0.flag)
 		}
 	}
 	
@@ -175,7 +180,12 @@ struct DeviceHandlers {
 												userId: UserId) {
 		let limitsTable = db.table(BiqDeviceLimit.self)
 		let models = defaultLimits.map {
-			BiqDeviceLimit(userId: userId, deviceId: deviceId, limitType: $0.limitType, limitValue: $0.limitValue ?? 0.0, limitValueString: $0.limitValueString)
+			BiqDeviceLimit(userId: userId,
+						   deviceId: deviceId,
+						   limitType: $0.limitType,
+						   limitValue: $0.limitValue ?? 0.0,
+						   limitValueString: $0.limitValueString,
+						   limitFlag: .none)
 		}
 		_ = try? limitsTable.insert(models)
 		_ = try? biqDatabaseInfo.obsDb().table(BiqDevicePushLimit.self).insert(BiqDevicePushLimit(deviceId: deviceId, limitType: .interval, limitValue: defaultReportInterval, limitValueString: nil))
@@ -279,7 +289,7 @@ struct DeviceHandlers {
 			// this is sql because of the bit flip op
 			try db.sql(
 				"""
-				update biqdevice
+				update \(BiqDevice.CRUDTableName)
 				set ownerid=NULL, latitude=NULL, longitude=NULL, flags=(flags & ~1)
 				where id=$1 and ownerid=$2
 				""", bindings: [("$1", .string(deviceId)), ("$2", .uuid(session.id))])
@@ -355,8 +365,8 @@ struct DeviceHandlers {
 				.delete()
 			try db.sql(
 				"""
-				delete from biqdevicegroupmembership
-				where deviceid = $1 and groupid in (select id from biqdevicegroup where ownerid = $2)
+				delete from \(BiqDeviceGroupMembership.CRUDTableName)
+				where deviceid = $1 and groupid in (select id from \(BiqDeviceGroup.CRUDTableName) where ownerid = $2)
 				""", bindings: [("$1", .string(deviceId)), ("$2", .uuid(session.id))])
 		}
 		return EmptyReply()
@@ -459,7 +469,12 @@ struct DeviceHandlers {
 				let valueString = limit.limitValueString
 				if nil != value || nil != valueString {
 					// update or insert (should be an upsert)
-					let model = BiqDeviceLimit(userId: session.id, deviceId: deviceId, limitType: limit.limitType, limitValue: value ?? 0.0, limitValueString: valueString)
+					let model = BiqDeviceLimit(userId: session.id,
+											   deviceId: deviceId,
+											   limitType: limit.limitType,
+											   limitValue: value ?? 0.0,
+											   limitValueString: valueString,
+											   limitFlag: limit.limitFlag ?? .none)
 					try matchWhere.delete()
 					try limitsTable.insert(model)
 					
@@ -522,10 +537,10 @@ struct DeviceHandlers {
 			let limits = try limitsTable.where(\BiqDeviceLimit.userId == session.id && \BiqDeviceLimit.deviceId == deviceId).select()
 			let response = DeviceAPI.DeviceLimitsResponse(deviceId: deviceId,
 														  limits: limits.compactMap {
-															guard let l = $0.type else {
-																return nil
-															}
-															return DeviceAPI.DeviceLimit(limitType: l, limitValue: $0.limitValue, limitValueString: $0.limitValueString)
+															return DeviceAPI.DeviceLimit(limitType: $0.type,
+																						 limitValue: $0.limitValue,
+																						 limitValueString: $0.limitValueString,
+																						 limitFlag: $0.flag)
 			})
 			if !pushLimits.isEmpty {
 				let db = try biqDatabaseInfo.obsDb()
