@@ -248,7 +248,8 @@ struct DeviceHandlers {
 		// validate the urn to ensure it is
 		// valid for an unowned-biq
 		let db = try biqDatabaseInfo.deviceDb()
-		return try db.transaction {
+		let newOne = try db.transaction {
+			() -> BiqDevice in
 			let table = db.table(BiqDevice.self)
 			guard let device = try table.where(\BiqDevice.id == deviceId).first() else {
 				throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
@@ -267,10 +268,11 @@ struct DeviceHandlers {
 								   ownerId: session.id,
 								   flags: flags)
 				try table.where(\BiqDevice.id == deviceId).update(newOne, setKeys: \.ownerId)
-				setStandardLimits(db: db, deviceId: deviceId, userId: session.id)
 			}
 			return newOne
 		}
+		setStandardLimits(db: db, deviceId: deviceId, userId: session.id)
+		return newOne
 	}
 	
 	static func deviceUnregister(session rs: RequestSession) throws -> EmptyReply {
@@ -426,10 +428,10 @@ struct DeviceHandlers {
 		let updateRequest: DeviceAPI.UpdateLimitsRequest = try request.decode()
 		let deviceId = updateRequest.deviceId
 		let db = try biqDatabaseInfo.deviceDb()
-		guard let device = try userHasDeviceAccess(db: db, deviceId: deviceId, userId: session.id) else {
+		guard let device = try userHasDeviceAccess(db: db, deviceId: deviceId, userId: session.id), let ownerId = device.ownerId else {
 			throw HTTPResponseError(status: .badRequest, description: "User is not device owner and device has not been shared.")
 		}
-		let isOwner = device.ownerId == session.id
+		let isOwner = ownerId == session.id
 		var pushLimits: [BiqDevicePushLimit] = []
 		let limitsTable = db.table(BiqDeviceLimit.self)
 		
@@ -460,7 +462,7 @@ struct DeviceHandlers {
 			}
 		}
 		
-		return try db.transaction {
+		try db.transaction {
 			for limit in updateRequest.limits {
 				let matchWhere = limitsTable.where(
 						matchDevice &&
@@ -534,26 +536,26 @@ struct DeviceHandlers {
 					try matchWhere.delete()
 				}
 			}
-			let limits = try limitsTable.where(\BiqDeviceLimit.userId == session.id && \BiqDeviceLimit.deviceId == deviceId).select()
-			let response = DeviceAPI.DeviceLimitsResponse(deviceId: deviceId,
-														  limits: limits.compactMap {
-															return DeviceAPI.DeviceLimit(limitType: $0.type,
-																						 limitValue: $0.limitValue,
-																						 limitValueString: $0.limitValueString,
-																						 limitFlag: $0.flag)
-			})
-			if !pushLimits.isEmpty {
-				let db = try biqDatabaseInfo.obsDb()
-				let table = db.table(BiqDevicePushLimit.self)
-				try db.transaction {
-					for limit in pushLimits {
-						try table.where(\BiqDevicePushLimit.deviceId == deviceId && \BiqDevicePushLimit.limitType == limit.limitType).delete()
-						try table.insert(limit)
-					}
+		}
+		let limits = try getLimits(db: db, deviceId: deviceId, ownerId: ownerId, userId: session.id)
+		let response = DeviceAPI.DeviceLimitsResponse(deviceId: deviceId,
+													  limits: limits.compactMap {
+														return DeviceAPI.DeviceLimit(limitType: $0.limitType,
+																					 limitValue: $0.limitValue,
+																					 limitValueString: $0.limitValueString,
+																					 limitFlag: $0.limitFlag)
+		})
+		if !pushLimits.isEmpty {
+			let db = try biqDatabaseInfo.obsDb()
+			let table = db.table(BiqDevicePushLimit.self)
+			try db.transaction {
+				for limit in pushLimits {
+					try table.where(\BiqDevicePushLimit.deviceId == deviceId && \BiqDevicePushLimit.limitType == limit.limitType).delete()
+					try table.insert(limit)
 				}
 			}
-			return response
 		}
+		return response
 	}
 	
 	static func deviceUpdate(session rs: RequestSession) throws -> EmptyReply {
