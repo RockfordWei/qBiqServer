@@ -323,9 +323,14 @@ struct ObsPoller: RedisWorker {
 				and userid in (select userid from biqdevicelimit where deviceid = $1 and limittype = \(BiqDeviceLimitType.notifications.rawValue) and limitvalue != 0)
 				and (
 					(limittype = \(BiqDeviceLimitType.tempHigh.rawValue) and limitvalue <= $2)
-					or (limittype = \(BiqDeviceLimitType.tempLow.rawValue) and limitvalue >= $2) )
+					or (limittype = \(BiqDeviceLimitType.tempLow.rawValue) and limitvalue >= $2)
+					or (limittype = \(BiqDeviceLimitType.movementLevel.rawValue) and $3 > 0))
 			""",
-			bindings: [("$1", .string(deviceId)), ("$2", .decimal(obj.obs.temp))],
+			bindings: [
+				("$1", .string(deviceId)),
+				("$2", .decimal(obj.obs.temp)),
+				("$3", .integer(obj.obs.accelx)) // !FIX! this is a hack for demo purposes. always send notification on movement
+				],
 			BiqDeviceLimit.self)
 		for limit in triggers {
 			guard let notesLimit = try db.table(BiqDeviceLimit.self)
