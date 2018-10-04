@@ -31,6 +31,14 @@ func shareTokenKey(_ uuid: UUID, deviceId: DeviceURN) -> String {
 	return "share-token:\(uuid):\(deviceId)"
 }
 
+//func totalAccel(x: Int, y: Int, z: Int) -> Double {
+//	let xd = Double(x) / 10.0
+//	let yd = Double(y) / 10.0
+//	let zd = Double(z) / 10.0
+//	return sqrt(xd*xd + yd*yd + zd*zd)
+//}
+//sqrt( x^2+y^2+z^2)
+
 // returns and obs containing the average for the given intervals
 struct AveragedObsGenerator: IteratorProtocol {
 	typealias Element = ObsDatabase.BiqObservation
@@ -67,7 +75,6 @@ struct AveragedObsGenerator: IteratorProtocol {
 		defer {
 			currentDate += dateInterval
 		}
-		var lastX = 0, lastY = 0, lastZ = 0
 		
 		let totalCount = theseObs.count
 		var temp = 0.0
@@ -81,17 +88,14 @@ struct AveragedObsGenerator: IteratorProtocol {
 			battery += ob.battery
 			light += ob.light
 			humidity += ob.humidity
-			if ob.accelx != lastX {
+			if ob.accelx != 0 {
 				x += 1
-				lastX = ob.accelx
 			}
-			if ob.accely != lastY {
+			if ob.accely != 0 {
 				y += 1
-				lastY = ob.accely
 			}
-			if ob.accelz != lastZ {
+			if ob.accelz != 0 {
 				z += 1
-				lastZ = ob.accelz
 			}
 			charging = ob.charging
 		}
@@ -105,9 +109,9 @@ struct AveragedObsGenerator: IteratorProtocol {
 										  temp: avg(temp, count: totalCount),
 										  light: avg(light, count: totalCount),
 										  humidity: avg(humidity, count: totalCount),
-										  accelx: x,//avg(x, count: totalCount),
-										  accely: y,//avg(y, count: totalCount),
-										  accelz: z)//avg(z, count: totalCount))
+										  accelx: x,
+										  accely: y,
+										  accelz: z)
 	}
 }
 
