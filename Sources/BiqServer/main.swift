@@ -8,6 +8,20 @@ import PerfectCRUD
 import PerfectThread
 import PerfectCrypto
 import PerfectRedis
+import Foundation
+
+
+extension String {
+  func env(_ defaultValue: String = "" ) -> String {
+    guard let pval = getenv(self) else {
+      print("loading env ", self, " = ", defaultValue)
+      return defaultValue
+    }
+    let val = String.init(cString: pval)
+    print("loading env ", self, " = ", val)
+    return val
+  }
+}
 
 _ = PerfectCrypto.isInitialized
 
