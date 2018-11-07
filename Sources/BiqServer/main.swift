@@ -13,12 +13,9 @@ _ = PerfectCrypto.isInitialized
 
 CRUDLogging.queryLogDestinations = []
 
-#if os(Linux)
-	var port = 80
-#else
-	var port = 8080
-#endif
-let authServerPubKey = try PEMKey(pemPath: "./config/jwtRS256.key.pub")
+let port = 443
+
+let authServerPubKey = try PEMKey(pemPath: "/root/jwtRS256.key.pub")
 
 do {
 	let rds = biqDatabaseInfo
@@ -41,4 +38,5 @@ workGroup.add(worker: ObsPoller())
 workGroup.add(worker: NotePoller())
 
 let routes = mainRoutes()
-try HTTPServer.launch(name: "api.ubiqweus.com", port: port, routes: routes)
+try HTTPServer.launch(.secureServer(TLSConfiguration(certPath: "/root/combo.crt", keyPath: "/root/store.key"),
+                                    name: "store.ubiqweus.com", port: port, routes: routes))
