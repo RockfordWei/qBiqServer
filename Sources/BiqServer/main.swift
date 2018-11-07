@@ -39,7 +39,7 @@ do {
 	CRUDLogging.log(.error, msg)
 	CRUDLogging.flush()
 	Threading.sleep(seconds: 1.0)
-	fatalError(msg)
+	//fatalError(msg)
 }
 
 try configureNotifications()
