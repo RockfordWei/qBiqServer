@@ -39,18 +39,18 @@ do {
 	CRUDLogging.log(.error, msg)
 	CRUDLogging.flush()
 	Threading.sleep(seconds: 1.0)
-	//fatalError(msg)
+	fatalError(msg)
 }
 
 try configureNotifications()
 
-let info = biqRedisInfo
-let redisAddr = RedisClientIdentifier(withHost: info.hostName, port: info.hostPort)
+// let info = biqRedisInfo
+let redisAddr = RedisClientIdentifier(withHost: "BIQ_RD_HOST".env("localhost"), port: Int("BIQ_RD_PORT".env("6379")) ?? 6379)
 let workGroup = RedisWorkGroup(redisAddr)
 workGroup.add(worker: TheWatcher())
 workGroup.add(worker: ObsPoller())
 workGroup.add(worker: NotePoller())
 
 let routes = mainRoutes()
-try HTTPServer.launch(.secureServer(TLSConfiguration(certPath: "/root/combo.crt", keyPath: "/root/store.key"),
-                                    name: "store.ubiqweus.com", port: port, routes: routes))
+try HTTPServer.launch(.secureServer(TLSConfiguration(certPath: "/root/combo.crt", keyPath: "/root/server.key"),
+                                    name: "api.ubiqweus.com", port: port, routes: routes))
