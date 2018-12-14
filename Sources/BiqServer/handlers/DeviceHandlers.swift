@@ -525,9 +525,20 @@ struct DeviceHandlers {
 															 limitValue: limit.limitValue ?? 300,
 															 limitValueString: limit.limitValueString))
 					case BiqDeviceLimitType.reportFormat.rawValue:
-						()
+            let v = limit.limitValue ?? 0
+            pushLimits.append(BiqDevicePushLimit(deviceId: deviceId,
+                               limitType: limit.limitType,
+                               limitValue: v > 1 ? 2.0 : 0.0,
+                               limitValueString: ""))
 					case BiqDeviceLimitType.reportBufferCapacity.rawValue:
-						()
+            var v = UInt8(limit.limitValue ?? 2)
+            if v < 1 || v > 50 {
+              v = 50
+            }
+            pushLimits.append(BiqDevicePushLimit(deviceId: deviceId,
+                               limitType: limit.limitType,
+                               limitValue: Float(v),
+                               limitValueString: ""))
 					case BiqDeviceLimitType.lightLevel.rawValue:
 						()
 					case BiqDeviceLimitType.humidityLevel.rawValue:
