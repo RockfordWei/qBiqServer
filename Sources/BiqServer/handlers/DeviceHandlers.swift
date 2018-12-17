@@ -506,7 +506,9 @@ struct DeviceHandlers {
 							pushLimits.append(model)
 						}
 					case BiqDeviceLimitType.movementLevel.rawValue:
-						let model = BiqDevicePushLimit(deviceId: deviceId, limitType: limit.limitType, limitValue: limit.limitValue ?? 0.0, limitValueString: nil)
+            let motionLevels = [80, 40, 20, 10, 5]
+            let level = Int(limit.limitValue ?? 0)
+            let model = BiqDevicePushLimit(deviceId: deviceId, limitType: limit.limitType, limitValue: Float(motionLevels[level]), limitValueString: nil)
 						pushLimits.append(model)
 					case BiqDeviceLimitType.batteryLevel.rawValue:
 						()
