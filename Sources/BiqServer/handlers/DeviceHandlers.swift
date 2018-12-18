@@ -744,7 +744,7 @@ struct DeviceHandlers {
     case .day: // 2
       sql =
 """
-      select extract(hour from (clock_timestamp() + hourid * interval '1 hour')) as unitid, moves from (
+      select extract(epoch from (clock_timestamp() + hourid * interval '1 hour'))::int as unitid, moves from (
       select hourid, sum(movement) as moves from (
       select extract(hour from tm - clock_timestamp()) as hourid, movement from (
       select to_timestamp(obstime/1000) as tm,
@@ -758,7 +758,7 @@ struct DeviceHandlers {
     case .month: // 3
       sql =
 """
-      select extract(day from (clock_timestamp() + dayid * interval '1 day')) as unitid, moves from (
+      select extract(epoch from (clock_timestamp() + dayid * interval '1 day'))::int as unitid, moves from (
       select dayid, sum(movement) as moves from (
       select extract(day from tm - clock_timestamp()) as dayid, movement from (
       select to_timestamp(obstime/1000) as tm,
@@ -772,7 +772,7 @@ struct DeviceHandlers {
     case .year: // 4
       sql =
 """
-      select extract(month from (clock_timestamp() + monthid * interval '1 month')) as unitid, moves from (
+      select extract(epoch from (clock_timestamp() + monthid * interval '1 month'))::int as unitid, moves from (
       select monthid, sum(movement) as moves from (
       select extract(month from tm - clock_timestamp()) as monthid, movement from (
       select to_timestamp(obstime/1000) as tm,
