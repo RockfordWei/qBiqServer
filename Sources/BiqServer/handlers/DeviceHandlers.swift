@@ -629,7 +629,17 @@ struct DeviceHandlers {
 		guard let interval = DeviceAPI.ObsRequest.Interval(rawValue: obsRequest.interval) else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid interval.")
 		}
-		
+    let dbDev = try biqDatabaseInfo.deviceDb()
+    let deviceTable = dbDev.table(BiqDevice.self)
+
+    guard let currentDevice = try deviceTable.where(\BiqDevice.id == deviceId).first() else {
+      throw HTTPResponseError(status: .badRequest, description: "Invalid device.")
+    }
+    if currentDevice.ownerId != session.id, let flags = currentDevice.flags {
+      if flags & BiqDeviceFlag.locked.rawValue != 0 {
+        throw HTTPResponseError(status: .forbidden, description: "Device has been locked by owner.")
+      }
+    }
 		do { // screen for access
 			let userId = session.id
 			let db = Database(configuration: try biqDatabaseInfo.databaseConfiguration())
@@ -644,6 +654,7 @@ struct DeviceHandlers {
 				throw HTTPResponseError(status: .badRequest, description: "User is not device owner and device has not been shared.")
 			}
 		}
+
 		
 		let db = try biqDatabaseInfo.obsDb()
 		let table = db.table(BiqObservation.self)
