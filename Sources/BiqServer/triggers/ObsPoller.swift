@@ -420,7 +420,7 @@ struct NotePoller: RedisWorker {
 		if !userIds.isEmpty {
 			let userDevices = try mobileTable.where(\MobileDeviceId.aliasId ~ userIds).select().map { $0.deviceId }
 			let formattedValue = obj.formattedObsValue(tempScale: tempScale)
-			
+      let alertMessage = limitType == .movementLevel ? "\(biqName) has been moved" : "Alert triggered for \(biqName) with \(limitType.description) at \(formattedValue)"
 			CRUDLogging.log(.info, "Notification for \(obj.userId) \(obj.deviceId) \(obj.limitType) \(userDevices.joined(separator: " "))")
 			let promise: Promise<Bool> = Promise {
 				p in
@@ -439,7 +439,7 @@ struct NotePoller: RedisWorker {
 						.category("qbiq.alert"),
 						.threadId(biqId),
 						.alertTitle("\(limitType.description) Alert"),
-						.alertBody("Alert triggered for \(biqName) with \(limitType.description) at \(formattedValue)")]) {
+						.alertBody(alertMessage)]) {
 							responses in
 							try? obj.delete(removeList: noteInProgressMsgKey)
 							p.set(true)
