@@ -620,7 +620,35 @@ struct DeviceHandlers {
 		try table.where(\BiqObservation.deviceId == deviceId).delete()		
 		return EmptyReply()
 	}
-	
+
+  static func smooth(_ obs: [ObsDatabase.BiqObservation]) -> [ObsDatabase.BiqObservation]
+  {
+    guard obs.count > 2 else { return obs }
+    var vobs = obs
+    var i = 1
+    while i < obs.count - 1 {
+      let left = obs[i - 1]
+      let mid = obs[i]
+      let right = obs[i + 1]
+      let avg = abs(left.temp - right.temp)
+      let small = min(left.temp, right.temp)
+      let big = mid .temp - small
+      guard big > 0 else {
+        i += 1
+        continue
+      }
+      let rate = big / avg
+      if rate > 2 {
+        let j = obs[i]
+        vobs[i] = ObsDatabase.BiqObservation.init(id: j.id, deviceId: j.deviceId, obstime: j.obstime, charging: j.charging, firmware: j.firmware, wifiFirmware: j.wifiFirmware ?? "", battery: j.battery, temp: small, light: j.light, humidity: j.humidity, accelx: j.accelx, accely: j.accely, accelz: j.accelz)
+        i += 2
+      } else {
+        i += 1
+      }
+    }
+    return vobs
+  }
+  
 	static func deviceObs(session rs: RequestSession) throws -> [ObsDatabase.BiqObservation] {
 		typealias BiqObservation = ObsDatabase.BiqObservation
 		let (request, session) = rs
@@ -673,7 +701,7 @@ struct DeviceHandlers {
 				.where(
 					\BiqObservation.deviceId == deviceId &&
 						\BiqObservation.obstime >= (earliest * 1000)).select().map{$0}
-			return obs
+			return smooth(obs)
 		case .day: // 2
 			let earliest = secsToBeginningOfDay(now - (oneHour * 24))
 			let obs = try table
