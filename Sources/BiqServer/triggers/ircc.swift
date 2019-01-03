@@ -130,7 +130,7 @@ public class IRCClient {
           .mutableContent,
           .category("qbiq.alert"),
           .threadId(biqId),
-          .alertTitle("\(speaker):"),
+          .alertTitle("\(speaker)~ about \(biqName):"),
           .alertBody(message.content)]) { responses in
             CRUDLogging.log(.info, "----------- RESP \(responses)")
       }
