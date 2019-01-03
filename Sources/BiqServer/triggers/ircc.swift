@@ -8,6 +8,7 @@ import PerfectCrypto
 import SwiftCodables
 import SAuthCodables
 import PerfectNotifications
+import PerfectThread
 
 extension String {
   public func tear(_ by: Character) -> (String, String) {
@@ -65,6 +66,7 @@ public class IRCClient {
   public var channels: Set<String> = []
 
   public typealias MessageEvent = (IRCPrivateMessage) -> Void
+
   public let onMessage: MessageEvent = { message in
     do {
       let db = try biqDatabaseInfo.deviceDb()
@@ -74,27 +76,63 @@ public class IRCClient {
       let owners = try deviceOwners.select()
       let adb = try biqDatabaseInfo.authDb()
       let aliasTable = try adb.table(AliasBrief.self).select()
-      let accountTable = try adb.table(Account.self).select()
       let mobileTable = try adb.table(MobileDeviceId.self).select()
+      let biqId = message.channel
+      var biqName = ""
       let uid:Set<String> = try db.transaction { () -> Set<String> in
         let u1 = perm.map { $0.userId.uuidString }
         let u2 = owners.map { $0.ownerId?.uuidString ?? "" }.filter { !$0.isEmpty }
+        let names = owners.map { $0.name }
+        if let name = names.first {
+          biqName = name
+        }
         return Set<String>(u1 + u2)
       }
+
+      let fullName = try adb.transaction  { ()-> String? in
+        let accounts: [String] = try adb.sql("SELECT * FROM account WHERE id::text LIKE '\(message.nickname)%'", Account.self).map  { $0.meta?.fullName ?? "" }.filter { !$0.isEmpty }
+        return accounts.first
+      }
+      // ignore non-qbiq channels
+      guard !uid.isEmpty else { return }
+      var recipient: [String] = []
+      var speaker = fullName ?? message.realname
       try adb.transaction {
-        print("------------------ message \(message.content) ---------------------")
         uid.forEach { userId in
-          let accounts = accountTable.filter { $0.id.uuidString == userId && $0.meta != nil }.map { $0.meta! }
+          if userId.hasPrefix(message.nickname) {
+            return
+          }
           let emails = aliasTable.filter { $0.account.uuidString == userId }.map { $0.address }
-          let mobiles = mobileTable.filter { emails.contains($0.aliasId) }
-          print("uid: ", userId)
-          print("user: ", accounts)
-          print("address: ", emails)
-          print("mobiles: ", mobiles)
+          let mobiles = mobileTable.filter { emails.contains($0.aliasId) }.map { $0.deviceId }
+          recipient.append(contentsOf: mobiles)
         }
       }
+      CRUDLogging.log(.info, "----------- FROM \(message.nickname)")
+      CRUDLogging.log(.info, "----------- REAL \(message.realname)")
+      CRUDLogging.log(.info, "----------- QBIQ \(message.channel)")
+      CRUDLogging.log(.info, "----------- SPKR \(speaker)")
+      CRUDLogging.log(.info, "----------- SURC \(biqName)")
+      CRUDLogging.log(.info, "----------- CONT \(message.content)")
+      guard !recipient.isEmpty else {
+        CRUDLogging.log(.warning, "No recipients to notify")
+        return
+      }
+      print("----------- RCPT ", recipient)
+      NotificationPusher(apnsTopic: notificationsTopic).pushAPNS(
+        configurationName: notificationsConfigName,
+        deviceTokens: recipient,
+        notificationItems: [
+          .customPayload("qbiq.name", biqName),
+          .customPayload("qbiq.id", biqId),
+          .mutableContent,
+          .category("qbiq.alert"),
+          .threadId(biqId),
+          .alertTitle("\(speaker):"),
+          .alertBody(message.content)]) { responses in
+            CRUDLogging.log(.info, "----------- RESP \(responses)")
+      }
     } catch(let err) {
-
+      CRUDLogging.log(.warning, "Notification Sending: \(err)")
     }
 
   }
