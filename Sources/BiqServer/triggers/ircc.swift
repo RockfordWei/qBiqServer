@@ -89,9 +89,12 @@ public class IRCClient {
         return Set<String>(u1 + u2)
       }
 
+      let lowered = message.nickname.lowercased()
+      let sql = "SELECT * FROM account WHERE id::text LIKE '\(lowered)%'"
       let fullName = try adb.transaction  { ()-> String? in
-        let accounts: [String] = try adb.sql("SELECT * FROM account WHERE id::text LIKE '\(message.nickname)%'", Account.self).map  { $0.meta?.fullName ?? "" }.filter { !$0.isEmpty }
-        return accounts.first
+        let accounts = try adb.sql(sql, Account.self)
+        let name = accounts.first?.meta?.fullName
+        return name
       }
       // ignore non-qbiq channels
       guard !uid.isEmpty else { return }
