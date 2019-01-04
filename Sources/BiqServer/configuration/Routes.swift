@@ -45,7 +45,14 @@ func mainRoutes() -> Routes {
 		deviceRoutes.add(method: .post, uri: "/limits", handler: DeviceHandlers.deviceSetLimits)
 	}
 	v1.add(deviceRoutes)
-	
-	routes.add(v1)
+
+  var chatRoutes = TRoutes(baseUri: "/chat", handler: ChatHandlers.identity)
+  do {
+    chatRoutes.add(method: .post, uri: "/save", handler: ChatHandlers.save)
+    chatRoutes.add(method: .get, uri: "/load", handler: ChatHandlers.load)
+  }
+  v1.add(chatRoutes)
+
+  routes.add(v1)
 	return routes
 }
