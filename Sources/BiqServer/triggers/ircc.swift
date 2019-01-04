@@ -99,6 +99,7 @@ public class IRCClient {
       // ignore non-qbiq channels
       guard !uid.isEmpty else { return }
       var recipient: [String] = []
+      var addresses: [String: String] = [:]
       var speaker = fullName ?? message.realname
       try adb.transaction {
         uid.forEach { userId in
@@ -106,6 +107,7 @@ public class IRCClient {
             return
           }
           let emails = aliasTable.filter { $0.account.uuidString == userId }.map { $0.address }
+          mobileTable.forEach { addresses[$0.deviceId] = $0.aliasId }
           let mobiles = mobileTable.filter { emails.contains($0.aliasId) }.map { $0.deviceId }
           recipient.append(contentsOf: mobiles)
         }
@@ -132,7 +134,14 @@ public class IRCClient {
           .threadId(biqId),
           .alertTitle("\(speaker)~ about \(biqName):"),
           .alertBody(message.content)]) { responses in
-            CRUDLogging.log(.info, "----------- RESP \(responses)")
+            for (response, device) in zip(responses, recipient) {
+              let email = addresses[device] ?? "unknown email address"
+              if case .ok = response.status {
+                CRUDLogging.log(.info, "\(email): Sent OK")
+              } else {
+                CRUDLogging.log(.error, "\(email): \(response.stringBody) for device \(device)")
+              }
+            }
       }
     } catch(let err) {
       CRUDLogging.log(.warning, "Notification Sending: \(err)")
@@ -160,7 +169,7 @@ public class IRCClient {
             self.net.write(string: reply) { _ in }
           } else {
             guard let msg = IRCPrivateMessage(by: line) else {
-              print("none private message: ", line)
+              CRUDLogging.log(.info, "none private message: \(line)")
               continue
             }
             onMessage(msg)
