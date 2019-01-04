@@ -138,13 +138,21 @@ AND alias.account in (\(constrains))
   }
 
   static func load(session rs: RequestSession) throws -> [ChatLogRecord] {
+    let db = try biqDatabaseInfo.deviceDb()
+    let shared = try db.table(BiqDeviceAccessPermission.self)
+      .where(\BiqDeviceAccessPermission.userId == rs.session.id).select()
+      .map { "'\($0.deviceId)'" }
+    let owned = try db.table(BiqDevice.self).where(\BiqDevice.ownerId == rs.session.id).select()
+      .map { "'\($0.id)'"}
+
+    let devices: Set<String> = Set<String>(shared + owned)
+    guard !devices.isEmpty else { return [] }
+
+    let dev = devices.joined(separator: ",")
     let adb = try biqDatabaseInfo.authDb()
     let last = Int64(rs.request.param(name: "last") ?? "0") ?? 0
-    let topic = rs.request.param(name: "topic") ?? "general"
-    let records: [ChatLogRecord] = try adb.sql("SELECT * FROM chatlog WHERE id > $1 AND topic = $2 ORDER BY id, utc LIMIT 10",
-                                               bindings: [("$1", .integer64(last)),
-                                                          ("$2", .string(topic))],
-                                               ChatLogRecord.self)
+    let sql = "SELECT * FROM chatlog WHERE id > \(last) AND topic IN (\(dev)) ORDER BY id, utc LIMIT 10"
+    let records: [ChatLogRecord] = try adb.sql(sql, ChatLogRecord.self)
     return records
   }
 }
