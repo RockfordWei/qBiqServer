@@ -53,6 +53,13 @@ func mainRoutes() -> Routes {
   }
   v1.add(chatRoutes)
 
+  var fileRoutes = TRoutes(baseUri: "/profile", handler: ProfileHandlers.identity)
+  do {
+    fileRoutes.add(method: .post, uri: "/upload", handler: ProfileHandlers.upload)
+    fileRoutes.add(method: .get, uri: "/download", handler: ProfileHandlers.download)
+  }
+  v1.add(fileRoutes)
+
   routes.add(v1)
 	return routes
 }
