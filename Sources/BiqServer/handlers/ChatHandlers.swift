@@ -78,11 +78,13 @@ CREATE TABLE IF NOT EXISTS chatlog(
                   ])
 
     let permission = try db.table(BiqDeviceAccessPermission.self)
-      .where(\BiqDeviceAccessPermission.deviceId == device.id
-        && \BiqDeviceAccessPermission.userId != rs.session.id)
-      .select()
+      .where(\BiqDeviceAccessPermission.deviceId == device.id).select()
+    let owners = try db.table(BiqDevice.self).where(\BiqDevice.id == device.id).select()
     let recipients = try db.transaction { () -> [String] in
-      return permission.map { $0.userId.uuidString.lowercased() }.map { "'\($0)'"}
+      let shared = permission.map { $0.userId.uuidString.lowercased() }
+      let owned = owners.map{ $0.ownerId?.uuidString.lowercased() ?? "" }.filter { !$0.isEmpty }
+      let combined = Set<String>(shared + owned)
+      return [String](combined.filter { $0 != uid } .map { "'\($0)'"})
     }
     guard !recipients.isEmpty else { return }
 
