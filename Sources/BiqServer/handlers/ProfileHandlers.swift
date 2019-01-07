@@ -20,7 +20,10 @@ public struct ProfileAPIResponse: Codable {
 
 public struct ProfileHandlers {
 
-  static let path = "profiles"
+  static func jsonPath(uid: String) -> String {
+    return "profiles/\(uid).json"
+  }
+
   static func identity(session rs: RequestSession) throws -> RequestSession {
     return rs
   }
@@ -30,13 +33,15 @@ public struct ProfileHandlers {
     guard let bytes = rs.request.postBodyBytes else {
       return ProfileAPIResponse.init(content: "empty")
     }
-    guard bytes.count < 1048576 else {
+    let data = Data.init(bytes: bytes)
+    let prof = try JSONDecoder.init().decode(ProfileAPIResponse.self, from: data)
+    let text = prof.content
+    guard text.count < 1048576 else {
       return ProfileAPIResponse.init(content: "oversized")
     }
-    let path = "\(ProfileHandlers.path)/\(uid)"
-    let file = File.init(path)
+    let file = File.init(ProfileHandlers.jsonPath(uid: uid))
     try file.open(.write)
-    let count = try file.write(bytes: bytes)
+    let count = try file.write(string: text)
     file.close()
     return ProfileAPIResponse.init(content: "\(count)")
   }
@@ -45,15 +50,10 @@ public struct ProfileHandlers {
     guard let uid = rs.request.param(name: "uid") else {
       return ProfileAPIResponse.init()
     }
-    let path = "\(ProfileHandlers.path)/\(uid)"
-    let file = File.init(path)
+    let file = File.init(ProfileHandlers.jsonPath(uid: uid))
     try file.open(.read)
-    let bytes = try file.readSomeBytes(count: file.size)
+    let text = try file.readString()
     file.close()
-    guard let encoded = bytes.encode(.base64),
-      let str = String.init(validatingUTF8: encoded) else {
-        return ProfileAPIResponse.init()
-    }
-    return ProfileAPIResponse.init(content: str)
+    return ProfileAPIResponse.init(content: text)
   }
 }
