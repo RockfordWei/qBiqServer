@@ -45,6 +45,11 @@ public struct QBiqStat: Codable {
   public let following: Int
 }
 
+public struct QBiqSearchResult: Codable {
+  public let id: String
+  public let name: String
+}
+
 // returns and obs containing the average for the given intervals
 struct AveragedObsGenerator: IteratorProtocol {
 	typealias Element = ObsDatabase.BiqObservation
@@ -161,6 +166,22 @@ struct DeviceHandlers {
 	static func identity(session rs: RequestSession) throws -> RequestSession {
 		return rs
 	}
+
+  static func deviceSearch(session rs: RequestSession) throws -> [QBiqSearchResult] {
+    guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
+      return []
+    }
+    let wild = Character.init("%")
+    var pattern = "%"
+    for c in uid {
+      pattern.append(c)
+      pattern.append(wild)
+    }
+    let db = try biqDatabaseInfo.deviceDb()
+    let sql = "SELECT * FROM biqdevice WHERE id LIKE '\(pattern)' OR name LIKE '\(pattern)' LIMIT 10"
+    let devTable = try db.sql(sql, BiqDevice.self)
+    return devTable.map { QBiqSearchResult.init(id: $0.id, name: $0.name) }
+  }
 
   static func deviceStat(session rs: RequestSession) throws -> QBiqStat {
     guard let id = rs.request.param(name: "uid"),
