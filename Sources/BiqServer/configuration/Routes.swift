@@ -55,8 +55,10 @@ func mainRoutes() -> Routes {
 
   var fileRoutes = TRoutes(baseUri: "/profile", handler: ProfileHandlers.identity)
   do {
-    fileRoutes.add(method: .post, uri: "/upload", handler: ProfileHandlers.upload)
-    fileRoutes.add(method: .get, uri: "/download", handler: ProfileHandlers.download)
+    fileRoutes.add(method: .post, uri: "/upload", handler: ProfileHandlers.uploadImage)
+    fileRoutes.add(method: .get, uri: "/download", handler: ProfileHandlers.downloadImage)
+    fileRoutes.add(method: .post, uri: "/update", handler: ProfileHandlers.uploadText)
+    fileRoutes.add(method: .get, uri: "/get", handler: ProfileHandlers.downloadText)
   }
   v1.add(fileRoutes)
 
