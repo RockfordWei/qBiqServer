@@ -47,7 +47,7 @@ public struct ProfileHandlers {
       return ProfileAPIResponse.init(content: "oversized")
     }
     let file = File.init(ProfileHandlers.imgPath(uid: uid))
-    try file.open(.write)
+    try file.open(.truncate)
     let count = try file.write(string: text)
     file.close()
     return ProfileAPIResponse.init(content: "\(count)")
@@ -76,7 +76,7 @@ public struct ProfileHandlers {
       return ProfileAPIResponse.init(content: "oversized")
     }
     let file = File.init(ProfileHandlers.txtPath(uid: uid))
-    try file.open(.write)
+    try file.open(.truncate)
     let count = try file.write(string: text)
     file.close()
     return ProfileAPIResponse.init(content: "\(count)")
