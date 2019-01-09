@@ -39,6 +39,12 @@ func shareTokenKey(_ uuid: UUID, deviceId: DeviceURN) -> String {
 //}
 //sqrt( x^2+y^2+z^2)
 
+public struct QBiqStat: Codable {
+  public let owned: Int
+  public let followed: Int
+  public let following: Int
+}
+
 // returns and obs containing the average for the given intervals
 struct AveragedObsGenerator: IteratorProtocol {
 	typealias Element = ObsDatabase.BiqObservation
@@ -155,7 +161,20 @@ struct DeviceHandlers {
 	static func identity(session rs: RequestSession) throws -> RequestSession {
 		return rs
 	}
-	
+
+  static func deviceStat(session rs: RequestSession) throws -> QBiqStat {
+    guard let id = rs.request.param(name: "uid"),
+      let uid = UUID.init(uuidString: id)  else {
+      return QBiqStat.init(owned: -1, followed: -1, following: -1)
+    }
+    let db = try biqDatabaseInfo.deviceDb()
+    let owned = try db.table(BiqDevice.self).where(\BiqDevice.ownerId == uid).select().map { $0.id }
+    let followed = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.deviceId ~ owned).select().map { $0.userId.uuidString.lowercased() }
+    let uniqFollowed = Set<String>(followed)
+    let following = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.userId == uid).count()
+    return QBiqStat.init(owned: owned.count, followed: uniqFollowed.count, following: following)
+  }
+
 	private static func getLimits<C: DatabaseConfigurationProtocol>(
 								  db: Database<C>,
 								  deviceId: DeviceURN,

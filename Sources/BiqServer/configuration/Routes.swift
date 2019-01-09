@@ -30,6 +30,7 @@ func mainRoutes() -> Routes {
 	
 	var deviceRoutes = TRoutes(baseUri: "/device", handler: DeviceHandlers.identity)
 	do {
+    deviceRoutes.add(method: .get, uri: "/stat", handler: DeviceHandlers.deviceStat)
 		deviceRoutes.add(method: .get, uri: "/list", handler: DeviceHandlers.deviceList)
 		deviceRoutes.add(method: .post, uri: "/register", handler: DeviceHandlers.deviceRegister)
 		deviceRoutes.add(method: .post, uri: "/unregister", handler: DeviceHandlers.deviceUnregister)
