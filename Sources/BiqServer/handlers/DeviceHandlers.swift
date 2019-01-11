@@ -190,7 +190,12 @@ struct DeviceHandlers {
     }
     let db = try biqDatabaseInfo.deviceDb()
     let owned = try db.table(BiqDevice.self).where(\BiqDevice.ownerId == uid).select().map { $0.id }
-    let followed = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.deviceId ~ owned).select().map { $0.userId.uuidString.lowercased() }
+    let followed: [String]
+    if owned.isEmpty {
+      followed = []
+    } else {
+      followed = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.deviceId ~ owned).select().map { $0.userId.uuidString.lowercased() }
+    }
     let uniqFollowed = Set<String>(followed)
     let following = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.userId == uid).count()
     return QBiqStat.init(owned: owned.count, followed: uniqFollowed.count, following: following)

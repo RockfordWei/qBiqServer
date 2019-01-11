@@ -92,4 +92,16 @@ public struct ProfileHandlers {
     file.close()
     return ProfileAPIResponse.init(content: text)
   }
+
+  static func userFullName(session rs: RequestSession) throws -> ProfileAPIResponse {
+    let adb = try biqDatabaseInfo.authDb()
+    guard let uid = rs.request.param(name: "uid"),
+      let guest = Foundation.UUID.init(uuidString: uid),
+      let account = (try adb.table(Account.self).where(\Account.id == guest).first()),
+      let fullName = account.meta?.fullName else {
+        return ProfileAPIResponse.init()
+    }
+    return ProfileAPIResponse.init(content: fullName)
+  }
+
 }

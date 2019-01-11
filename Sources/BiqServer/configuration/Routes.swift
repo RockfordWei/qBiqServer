@@ -61,6 +61,7 @@ func mainRoutes() -> Routes {
     fileRoutes.add(method: .get, uri: "/download", handler: ProfileHandlers.downloadImage)
     fileRoutes.add(method: .post, uri: "/update", handler: ProfileHandlers.uploadText)
     fileRoutes.add(method: .get, uri: "/get", handler: ProfileHandlers.downloadText)
+    fileRoutes.add(method: .get, uri: "/name", handler: ProfileHandlers.userFullName)
   }
   v1.add(fileRoutes)
 
