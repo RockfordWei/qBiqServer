@@ -10,6 +10,7 @@ import PerfectHTTP
 import PerfectCRUD
 import SwiftCodables
 import SAuthCodables
+import PerfectLib
 
 func avg(_ i: Int, count: Int) -> Int {
 	guard count != 0 else {
@@ -27,7 +28,7 @@ func avg(_ i: Double, count: Int) -> Double {
 
 let secondsPerDay = 86400
 
-func shareTokenKey(_ uuid: UUID, deviceId: DeviceURN) -> String {
+func shareTokenKey(_ uuid: Foundation.UUID, deviceId: DeviceURN) -> String {
 	return "share-token:\(uuid):\(deviceId)"
 }
 
@@ -50,6 +51,15 @@ public struct QBiqSearchResult: Codable {
   public let name: String
 }
 
+public struct QBiqProfile: Codable {
+  public let id: DeviceURN
+  public let description: String
+  public let tags: [String]
+}
+
+public enum QBiqError: Error {
+  case reason(String)
+}
 // returns and obs containing the average for the given intervals
 struct AveragedObsGenerator: IteratorProtocol {
 	typealias Element = ObsDatabase.BiqObservation
@@ -167,6 +177,42 @@ struct DeviceHandlers {
 		return rs
 	}
 
+  static func jsonPath(id: DeviceURN) -> String {
+    return "biqs/\(id).json"
+  }
+
+  static func deviceProfileUpdate(session rs: RequestSession) throws -> ProfileAPIResponse {
+    guard let postbody = rs.request.postBodyBytes else {
+      throw QBiqError.reason("empty")
+    }
+    let postdata = Data.init(bytes: postbody)
+    let profile = try JSONDecoder.init().decode(QBiqProfile.self, from: postdata)
+    let db = try biqDatabaseInfo.deviceDb()
+    let obj = try db.table(BiqDevice.self).where(\BiqDevice.id == profile.id).count()
+    guard obj > 0 else {
+      throw QBiqError.reason("invalid")
+    }
+    let path = jsonPath(id: profile.id)
+    let file = File(path)
+    try file.open(.truncate)
+    try file.write(bytes: postbody)
+    file.close()
+    return ProfileAPIResponse.init(content: "updated")
+  }
+
+  static func deviceProfileGet(session rs: RequestSession) throws -> QBiqProfile {
+    guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
+      throw QBiqError.reason("empty")
+    }
+    let path = jsonPath(id: uid)
+    let file = File(path)
+    try file.open(.read)
+    defer { file.close() }
+    let content = try file.readSomeBytes(count: file.size)
+    let data = Data.init(bytes: content)
+    return try JSONDecoder.init().decode(QBiqProfile.self, from: data)
+  }
+
   static func deviceSearch(session rs: RequestSession) throws -> [QBiqSearchResult] {
     guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
       return []
@@ -178,7 +224,7 @@ struct DeviceHandlers {
       pattern.append(wild)
     }
     let db = try biqDatabaseInfo.deviceDb()
-    let sql = "SELECT * FROM biqdevice WHERE id LIKE '\(pattern)' OR name LIKE '\(pattern)' LIMIT 10"
+    let sql = "SELECT * FROM biqdevice WHERE id LIKE '\(pattern)' OR name LIKE '\(pattern)' LIMIT 5"
     let devTable = try db.sql(sql, BiqDevice.self)
     return devTable.map { QBiqSearchResult.init(id: $0.id, name: $0.name) }
   }
@@ -433,7 +479,7 @@ struct DeviceHandlers {
 		guard try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId && \BiqDevice.ownerId == session.id).count() == 1 else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
 		}
-		let shareToken = UUID()
+		let shareToken = Foundation.UUID()
 		let key = shareTokenKey(shareToken, deviceId: deviceId)
 		let client = try biqRedisInfo.client()
 		let response = try client.set(key: key, value: .string("1"), expires: Double(deviceShareTokenExpirationDays * secondsPerDay), ifNotExists: true)
