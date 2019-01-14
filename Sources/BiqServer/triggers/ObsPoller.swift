@@ -302,8 +302,12 @@ struct ObsPoller: RedisWorker {
 			repeat {
 				()
 			} while try readItem(with: client)
-		} catch {
-			CRUDLogging.log(.error, "\(error)")
+		} catch (let err) {
+      let emsg = "run(workGroup.client) \(err)"
+      guard emsg.contains("282") && emsg.contains("timeout") else {
+        CRUDLogging.log(.error, emsg)
+        return false
+      }
 		}
 		return true
 	}
@@ -367,9 +371,13 @@ struct NotePoller: RedisWorker {
 			repeat {
 				()
 			} while try readItem(with: client)
-		} catch {
-			CRUDLogging.log(.error, "\(error)")
-		}
+    } catch (let err) {
+      let emsg = "run(workGroup.client) \(err)"
+      guard emsg.contains("282") && emsg.contains("timeout") else {
+        CRUDLogging.log(.error, emsg)
+        return false
+      }
+    }
 		return true
 	}
 	private func readItem(with client: RedisClient) throws -> Bool {
@@ -386,14 +394,17 @@ struct NotePoller: RedisWorker {
 		let biqColour: String
 		let biqId = obj.deviceId
 		let tempScale: TemperatureScale
+    let movable: Bool
 		do {
 			let db = try biqDatabaseInfo.deviceDb()
 			if let device = try db.table(BiqDevice.self).where(\BiqDevice.id == obj.deviceId).first() {
 				biqName = device.name
 				isOwner = device.ownerId == obj.userId
+        movable = device.flags == 2
 			} else {
 				biqName = obj.deviceId
 				isOwner = true
+        movable = false
 			}
 			let limitsTable = db.table(BiqDeviceLimit.self)
 			if let colour = try limitsTable
@@ -420,8 +431,10 @@ struct NotePoller: RedisWorker {
 		if !userIds.isEmpty {
 			let userDevices = try mobileTable.where(\MobileDeviceId.aliasId ~ userIds).select().map { $0.deviceId }
 			let formattedValue = obj.formattedObsValue(tempScale: tempScale)
-      let alertMessage = limitType == .movementLevel ? "\(biqName) has been moved" : "Alert triggered for \(biqName) with \(limitType.description) at \(formattedValue)"
+      let alertMessage = limitType == .movementLevel && movable ? "\(biqName) has been moved" : "Alert triggered for \(biqName) with \(limitType.description) at \(formattedValue)"
 			CRUDLogging.log(.info, "Notification for \(obj.userId) \(obj.deviceId) \(obj.limitType) \(userDevices.joined(separator: " "))")
+      try db.sql("INSERT INTO chatlog(topic, poster, content) VALUES($1, $2, $3)",
+                 bindings:  [("$1", .string(biqId)), ("$2", .string(biqId)), ("$3", .string(alertMessage))])
 			let promise: Promise<Bool> = Promise {
 				p in
 				NotificationPusher(apnsTopic: notificationsTopic).pushAPNS(
@@ -524,8 +537,12 @@ struct TheWatcher: RedisWorker {
 				CRUDLogging.log(.info, "Items in suspect list \(returnSuspects.count)")
 			}
 			return returnSuspects
-		} catch {
-			CRUDLogging.log(.error, "Error while watching: \(error)")
+		} catch (let err) {
+      let emsg = "Error while watching: \(err)"
+      if emsg.contains("282") && emsg.contains("timeout") {
+      } else {
+        CRUDLogging.log(.error, emsg)
+      }
 		}
 		return state ?? []
 	}
