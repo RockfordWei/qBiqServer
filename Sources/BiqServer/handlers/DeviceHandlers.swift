@@ -57,6 +57,12 @@ public struct QBiqProfile: Codable {
   public let tags: [String]
 }
 
+public struct QBiqLocationUpdate: Codable {
+  public let id: DeviceURN
+  public let x: Double
+  public let y: Double
+}
+
 public enum QBiqError: Error {
   case reason(String)
 }
@@ -181,6 +187,21 @@ struct DeviceHandlers {
     return "biqs/\(id).json"
   }
 
+  static func deviceUpdateLocation(session rs: RequestSession) throws -> ProfileAPIResponse {
+    guard let postbody = rs.request.postBodyBytes else {
+      throw QBiqError.reason("empty")
+    }
+    let postdata = Data.init(bytes: postbody)
+    let profile = try JSONDecoder.init().decode(QBiqLocationUpdate.self, from: postdata)
+    let db = try biqDatabaseInfo.deviceDb()
+
+    try db.sql("UPDATE biqdevice SET longitude = $1, latitude = $2 WHERE id = $3 AND ownerid = $4", bindings: [
+      ("$1", .decimal(profile.x)), ("$2", .decimal(profile.y)),
+      ("$3", .string(profile.id)), ("$4", .string(rs.session.id.uuidString.lowercased()))
+      ])
+    return ProfileAPIResponse.init(content: "updated")
+  }
+  
   static func deviceProfileUpdate(session rs: RequestSession) throws -> ProfileAPIResponse {
     guard let postbody = rs.request.postBodyBytes else {
       throw QBiqError.reason("empty")
