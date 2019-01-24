@@ -112,7 +112,7 @@ AND alias.account in (\(constrains))
         .customPayload("qbiq.name", device.name),
         .customPayload("qbiq.id", device.id),
         .mutableContent,
-        .category("qbiq.alert"),
+        .category("qbiq.chat"),
         .threadId(device.id),
         .alertTitle("\(fullName)~ about \(device.name):"),
         .alertBody(record.content)]) { responses in
