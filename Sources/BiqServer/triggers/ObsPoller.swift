@@ -320,6 +320,69 @@ struct ObsPoller: RedisWorker {
 	private func handleNewObs(_ obj: ProcessingObs, client: RedisClient) throws -> Bool {
 		let db = try biqDatabaseInfo.deviceDb()
 		let deviceId = obj.obs.deviceId
+    let biqName: String
+    let movable: Bool
+    let ownerId: UserId?
+    if let device = try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId).first() {
+      biqName = device.name
+      movable = device.flags == 2
+      ownerId = device.ownerId
+    } else {
+      biqName = deviceId
+      movable = false
+      ownerId = nil
+    }
+
+    let alertMessage: String?
+    if movable {
+      let moved = abs(obj.obs.accelx) + abs(obj.obs.accely) + abs(obj.obs.accelz) > 0
+      if moved {
+        alertMessage = "\(biqName) has moved"
+      } else {
+        alertMessage = nil
+      }
+    } else {
+      let triggersForChat: [BiqDeviceLimit] = try db.sql(
+        """
+        SELECT * FROM biqdevicelimit WHERE deviceid = $1
+        AND userid IN (SELECT ownerid FROM biqdevice WHERE id = $1 LIMIT 1)
+        AND (
+        (limittype = \(BiqDeviceLimitType.tempHigh.rawValue) AND limitvalue <= $2)
+        OR
+        (limittype = \(BiqDeviceLimitType.tempLow.rawValue) AND limitvalue >= $2)
+        )
+        """,
+        bindings: [
+          ("$1", .string(deviceId)),
+          ("$2", .decimal(obj.obs.temp))
+        ], BiqDeviceLimit.self)
+
+      let limitsTable = db.table(BiqDeviceLimit.self)
+      let tempScale: TemperatureScale
+      if let oid = ownerId, let value = try limitsTable
+        .where(\BiqDeviceLimit.deviceId == deviceId &&
+          \BiqDeviceLimit.userId == oid &&
+          \BiqDeviceLimit.limitType == BiqDeviceLimitType.tempScale.rawValue).first()?.limitValue, let scale = TemperatureScale(rawValue: Int(value)) {
+        tempScale = scale
+      } else {
+        tempScale = .celsius
+      }
+      if let lm = triggersForChat.first {
+        let ltype = lm.type == .tempHigh ? "highest" : "lowest"
+        let v = tempScale.formatC(obj.obs.temp)
+        alertMessage = "Temperature exceeded the \(ltype) threshold at \(v)"
+      } else {
+        alertMessage = nil
+      }
+    }
+
+    if let msg = alertMessage {
+      let adb = try biqDatabaseInfo.authDb()
+      try adb.sql("INSERT INTO chatlog(topic, poster, content) VALUES($1, $1, $2)",
+                 bindings:  [("$1", .string(deviceId)), ("$2", .string(msg))])
+      CRUDLogging.log(.info, msg)
+    }
+    
 		let triggers: [BiqDeviceLimit] = try db.sql(
 			"""
 			select * from biqdevicelimit
@@ -328,12 +391,14 @@ struct ObsPoller: RedisWorker {
 				and (
 					(limittype = \(BiqDeviceLimitType.tempHigh.rawValue) and limitvalue <= $2)
 					or (limittype = \(BiqDeviceLimitType.tempLow.rawValue) and limitvalue >= $2)
-					or (limittype = \(BiqDeviceLimitType.movementLevel.rawValue) and $3 > 0))
+					or (limittype = \(BiqDeviceLimitType.movementLevel.rawValue) and ($3 != 0 or $4 != 0 or $5 != 0 )))
 			""",
 			bindings: [
 				("$1", .string(deviceId)),
 				("$2", .decimal(obj.obs.temp)),
-				("$3", .integer(obj.obs.accelx)) // !FIX! this is a hack for demo purposes. always send notification on movement
+				("$3", .integer(obj.obs.accelx)),
+        ("$4", .integer(obj.obs.accely)),
+        ("$5", .integer(obj.obs.accelz))
 				],
 			BiqDeviceLimit.self)
 		for limit in triggers {
@@ -433,8 +498,6 @@ struct NotePoller: RedisWorker {
 			let formattedValue = obj.formattedObsValue(tempScale: tempScale)
       let alertMessage = limitType == .movementLevel && movable ? "\(biqName) has been moved" : "Alert triggered for \(biqName) with \(limitType.description) at \(formattedValue)"
 			CRUDLogging.log(.info, "Notification for \(obj.userId) \(obj.deviceId) \(obj.limitType) \(userDevices.joined(separator: " "))")
-      try db.sql("INSERT INTO chatlog(topic, poster, content) VALUES($1, $2, $3)",
-                 bindings:  [("$1", .string(biqId)), ("$2", .string(biqId)), ("$3", .string(alertMessage))])
 			let promise: Promise<Bool> = Promise {
 				p in
 				NotificationPusher(apnsTopic: notificationsTopic).pushAPNS(
