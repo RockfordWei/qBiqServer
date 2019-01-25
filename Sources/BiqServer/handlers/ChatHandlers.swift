@@ -153,7 +153,7 @@ AND alias.account in (\(constrains))
     let dev = devices.joined(separator: ",")
     let adb = try biqDatabaseInfo.authDb()
     let last = Int64(rs.request.param(name: "last") ?? "0") ?? 0
-    let sql = "SELECT * FROM chatlog WHERE id > \(last) AND topic IN (\(dev)) ORDER BY id, utc LIMIT 10"
+    let sql = "SELECT * FROM chatlog WHERE id > \(last) AND topic IN (\(dev)) AND DATE_PART('day', now() - utc) < 31 ORDER BY id, utc LIMIT 100"
     let records: [ChatLogRecord] = try adb.sql(sql, ChatLogRecord.self)
     return records
   }
