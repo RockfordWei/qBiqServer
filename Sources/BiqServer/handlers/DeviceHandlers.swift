@@ -51,10 +51,74 @@ public struct QBiqSearchResult: Codable {
   public let name: String
 }
 
+public struct QBiqProfileRecord: Codable {
+  public let id: DeviceURN
+  public let sharable: Int
+  public let description: String
+}
+
+public struct QBiqProfileTag: Codable {
+  public let id: DeviceURN
+  public let tag: String
+}
+
 public struct QBiqProfile: Codable {
   public let id: DeviceURN
+  public let sharable: Int
   public let description: String
   public let tags: [String]
+
+  public static func load(id: DeviceURN) throws -> QBiqProfile? {
+    let db = try biqDatabaseInfo.deviceDb()
+    let records: [QBiqProfileRecord] = try db.table(QBiqProfileRecord.self).where(\QBiqProfileRecord.id == id).select().map { $0 }
+    let tags = try db.table(QBiqProfileTag.self).where(\QBiqProfileTag.id == id).select().map { $0.tag }
+    if let me = records.first {
+      return QBiqProfile.init(id: id, sharable: me.sharable, description: me.description, tags: tags)
+    } else {
+      return QBiqProfile.init(id: id, sharable: 0, description: "", tags: tags)
+    }
+  }
+
+  public static func setup() throws {
+    let db = try biqDatabaseInfo.deviceDb()
+    try db.sql(
+"""
+CREATE TABLE IF NOT EXISTS QBiqProfileRecord (
+  id VARCHAR(36) NOT NULL PRIMARY KEY,
+  sharable INT NOT NULL DEFAULT 0,
+  description VARCHAR(1024) DEFAULT ''
+);
+""")
+    try db.sql(
+"""
+CREATE TABLE IF NOT EXISTS QBiqProfileTag (
+  id VARCHAR(36) NOT NULL,
+  tag VARCHAR(64) NOT NULL,
+  PRIMARY KEY (id, tag)
+);
+""")
+  }
+  public func save(uid: Foundation.UUID) throws {
+    let db = try biqDatabaseInfo.deviceDb()
+    guard let _ = try db.table(BiqDevice.self).where(\BiqDevice.id == self.id && \BiqDevice.ownerId == uid).first() else {
+      throw QBiqError.reason("invalid owner id")
+    }
+    let prof = QBiqProfileRecord.init(id: self.id, sharable: self.sharable, description: self.description)
+    let tb = db.table(QBiqProfileTag.self)
+    let tbprof = db.table(QBiqProfileRecord.self)
+    try db.transaction {
+      if let _ = try tbprof.where(\QBiqProfileRecord.id == self.id).first() {
+        try tbprof.update(prof)
+      } else {
+        try tbprof.insert(prof)
+      }
+      try tb.where(\QBiqProfileTag.id == self.id).delete()
+      for t in self.tags {
+        let r = QBiqProfileTag.init(id: self.id, tag: t)
+        try tb.insert(r)
+      }
+    }
+  }
 }
 
 public struct QBiqLocationUpdate: Codable {
@@ -183,8 +247,16 @@ struct DeviceHandlers {
 		return rs
 	}
 
-  static func jsonPath(id: DeviceURN) -> String {
-    return "biqs/\(id).json"
+  static func deviceFollowers(session rs: RequestSession) throws -> [String] {
+    let db = try biqDatabaseInfo.deviceDb()
+    if let deviceId = rs.request.postBodyString {
+      let guests = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.deviceId == deviceId).select()
+      return guests.map { $0.userId.uuidString.lowercased() }
+    } else {
+      let oid = rs.session.id.uuidString.lowercased()
+      return try db.sql("SELECT DISTINCT userid FROM biqdeviceaccesspermission WHERE deviceid IN (SELECT id FROM biqdevice WHERE ownerid = $1)",
+                        bindings: [("$1", .string(oid))], String.self)
+    }
   }
 
   static func deviceUpdateLocation(session rs: RequestSession) throws -> ProfileAPIResponse {
@@ -208,16 +280,7 @@ struct DeviceHandlers {
     }
     let postdata = Data.init(bytes: postbody)
     let profile = try JSONDecoder.init().decode(QBiqProfile.self, from: postdata)
-    let db = try biqDatabaseInfo.deviceDb()
-    let obj = try db.table(BiqDevice.self).where(\BiqDevice.id == profile.id).count()
-    guard obj > 0 else {
-      throw QBiqError.reason("invalid")
-    }
-    let path = jsonPath(id: profile.id)
-    let file = File(path)
-    try file.open(.truncate)
-    try file.write(bytes: postbody)
-    file.close()
+    try profile.save(uid: rs.session.id)
     return ProfileAPIResponse.init(content: "updated")
   }
 
@@ -225,13 +288,10 @@ struct DeviceHandlers {
     guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
       throw QBiqError.reason("empty")
     }
-    let path = jsonPath(id: uid)
-    let file = File(path)
-    try file.open(.read)
-    defer { file.close() }
-    let content = try file.readSomeBytes(count: file.size)
-    let data = Data.init(bytes: content)
-    return try JSONDecoder.init().decode(QBiqProfile.self, from: data)
+    guard let prof = try QBiqProfile.load(id: uid) else {
+      throw QBiqError.reason("invalid")
+    }
+    return prof
   }
 
   static func deviceSearch(session rs: RequestSession) throws -> [QBiqSearchResult] {

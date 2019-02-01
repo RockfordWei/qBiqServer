@@ -48,6 +48,7 @@ func mainRoutes() -> Routes {
 		deviceRoutes.add(method: .get, uri: "/limits", handler: DeviceHandlers.deviceGetLimits)
 		deviceRoutes.add(method: .post, uri: "/limits", handler: DeviceHandlers.deviceSetLimits)
     deviceRoutes.add(method: .post, uri: "/location", handler: DeviceHandlers.deviceUpdateLocation)
+    deviceRoutes.add(method: .post, uri: "/followers", handler: DeviceHandlers.deviceFollowers)
 	}
 	v1.add(deviceRoutes)
 
