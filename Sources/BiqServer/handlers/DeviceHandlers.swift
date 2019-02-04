@@ -51,9 +51,15 @@ public struct QBiqSearchResult: Codable {
   public let name: String
 }
 
+public struct QBiqTagSearchResult: Codable {
+  public let id: String
+  public let name: String
+  public let description: String
+  public let tags: [String]
+}
+
 public struct QBiqProfileRecord: Codable {
   public let id: DeviceURN
-  public let sharable: Int
   public let description: String
 }
 
@@ -64,7 +70,6 @@ public struct QBiqProfileTag: Codable {
 
 public struct QBiqProfile: Codable {
   public let id: DeviceURN
-  public let sharable: Int
   public let description: String
   public let tags: [String]
 
@@ -73,9 +78,9 @@ public struct QBiqProfile: Codable {
     let records: [QBiqProfileRecord] = try db.table(QBiqProfileRecord.self).where(\QBiqProfileRecord.id == id).select().map { $0 }
     let tags = try db.table(QBiqProfileTag.self).where(\QBiqProfileTag.id == id).select().map { $0.tag }
     if let me = records.first {
-      return QBiqProfile.init(id: id, sharable: me.sharable, description: me.description, tags: tags)
+      return QBiqProfile.init(id: id, description: me.description, tags: tags)
     } else {
-      return QBiqProfile.init(id: id, sharable: 0, description: "", tags: tags)
+      return QBiqProfile.init(id: id, description: "", tags: tags)
     }
   }
 
@@ -85,7 +90,6 @@ public struct QBiqProfile: Codable {
 """
 CREATE TABLE IF NOT EXISTS QBiqProfileRecord (
   id VARCHAR(36) NOT NULL PRIMARY KEY,
-  sharable INT NOT NULL DEFAULT 0,
   description VARCHAR(1024) DEFAULT ''
 );
 """)
@@ -103,7 +107,7 @@ CREATE TABLE IF NOT EXISTS QBiqProfileTag (
     guard let _ = try db.table(BiqDevice.self).where(\BiqDevice.id == self.id && \BiqDevice.ownerId == uid).first() else {
       throw QBiqError.reason("invalid owner id")
     }
-    let prof = QBiqProfileRecord.init(id: self.id, sharable: self.sharable, description: self.description)
+    let prof = QBiqProfileRecord.init(id: self.id, description: self.description)
     let tb = db.table(QBiqProfileTag.self)
     let tbprof = db.table(QBiqProfileRecord.self)
     try db.transaction {
@@ -246,6 +250,31 @@ struct DeviceHandlers {
 	static func identity(session rs: RequestSession) throws -> RequestSession {
 		return rs
 	}
+
+  static func deviceTag(session rs: RequestSession) throws -> [QBiqTagSearchResult] {
+    guard let tag = rs.request.param(name: "with"), !tag.isEmpty else {
+      throw QBiqError.reason("empty")
+    }
+    let sql =
+"""
+SELECT * FROM (SELECT BiqDevice.id AS id, BiqDevice.name AS name,
+  QBiqProfileRecord.description AS description
+FROM BiqDevice
+LEFT JOIN QBiqProfileRecord ON BiqDevice.id = QBiqProfileRecord.id) AS BiqDeviceProfile
+WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
+"""
+    struct QBiqSimpleProfile: Codable {
+      public let id: String
+      public let name: String
+      public let description: String
+    }
+    let db = try biqDatabaseInfo.deviceDb()
+    let simple: [QBiqSimpleProfile] = try db.sql(sql, QBiqSimpleProfile.self)
+    return try simple.map { prof -> QBiqTagSearchResult in
+      let tags = try db.table(QBiqProfileTag.self).where(\QBiqProfileTag.id == prof.id).select().map { $0.tag }
+      return QBiqTagSearchResult.init(id: prof.id, name: prof.name, description: prof.description, tags: tags)
+    }
+  }
 
   static func deviceFollowers(session rs: RequestSession) throws -> [String] {
     let db = try biqDatabaseInfo.deviceDb()
@@ -560,6 +589,10 @@ struct DeviceHandlers {
 		guard try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId && \BiqDevice.ownerId == session.id).count() == 1 else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
 		}
+    guard let device = try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId).first(), !device.deviceFlags.contains(.locked) else {
+      throw HTTPResponseError(status: .forbidden, description: "Device is locked.")
+    }
+
 		let shareToken = Foundation.UUID()
 		let key = shareTokenKey(shareToken, deviceId: deviceId)
 		let client = try biqRedisInfo.client()
@@ -934,6 +967,17 @@ struct DeviceHandlers {
     let deviceId = obsRequest.deviceId
     guard let interval = DeviceAPI.ObsRequest.Interval(rawValue: obsRequest.interval) else {
       throw HTTPResponseError(status: .badRequest, description: "Invalid interval.")
+    }
+    let dbDev = try biqDatabaseInfo.deviceDb()
+    let deviceTable = dbDev.table(BiqDevice.self)
+
+    guard let currentDevice = try deviceTable.where(\BiqDevice.id == deviceId).first() else {
+      throw HTTPResponseError(status: .badRequest, description: "Invalid device.")
+    }
+    if currentDevice.ownerId != session.id, let flags = currentDevice.flags {
+      if flags & BiqDeviceFlag.locked.rawValue != 0 {
+        throw HTTPResponseError(status: .forbidden, description: "Device has been locked by owner.")
+      }
     }
 
     do { // screen for access
