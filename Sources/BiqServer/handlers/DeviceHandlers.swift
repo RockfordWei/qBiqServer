@@ -327,14 +327,8 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
     guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
       return []
     }
-    let wild = Character.init("%")
-    var pattern = "%"
-    for c in uid {
-      pattern.append(c)
-      pattern.append(wild)
-    }
     let db = try biqDatabaseInfo.deviceDb()
-    let sql = "SELECT * FROM biqdevice WHERE id LIKE '\(pattern)' OR name LIKE '\(pattern)' LIMIT 5"
+    let sql = "SELECT * FROM biqdevice WHERE id LIKE '%\(uid)' OR name LIKE '%\(uid)%' LIMIT 5"
     let devTable = try db.sql(sql, BiqDevice.self)
     return devTable.map { QBiqSearchResult.init(id: $0.id, name: $0.name) }
   }
