@@ -67,6 +67,7 @@ func mainRoutes() -> Routes {
     fileRoutes.add(method: .post, uri: "/update", handler: ProfileHandlers.uploadText)
     fileRoutes.add(method: .get, uri: "/get", handler: ProfileHandlers.downloadText)
     fileRoutes.add(method: .get, uri: "/name", handler: ProfileHandlers.userFullName)
+    fileRoutes.add(method: .post, uri: "/bill", handler: ProfileHandlers.validate)
   }
   v1.add(fileRoutes)
 

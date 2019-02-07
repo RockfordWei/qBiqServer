@@ -104,4 +104,85 @@ public struct ProfileHandlers {
     return ProfileAPIResponse.init(content: fullName)
   }
 
+  static func validate(session rs: RequestSession) throws -> [IAPReceiptAgent.ReceiptItem] {
+    guard let postbody = rs.request.postBodyString,
+      !biqIAPSecret.isEmpty else {
+      throw QBiqError.reason("empty")
+    }
+    guard let agentPro = IAPReceiptAgent.init(base64EncodedReceipt: postbody, password: biqIAPSecret),
+      let agentSandbox = IAPReceiptAgent.init(base64EncodedReceipt: postbody, password: biqIAPSecret, sandbox: true) else {
+        throw QBiqError.reason("init")
+    }
+    let receipts = try agentPro.syncValidate()
+    if receipts.isEmpty {
+      return try agentSandbox.syncValidate()
+    } else {
+      return receipts
+    }
+  }
+}
+
+
+public class IAPReceiptAgent {
+
+  public struct ReceiptItem: Codable {
+    public let product_id: String
+    public let purchase_date_ms: String
+    public let expires_date_ms: String
+  }
+
+  public struct Receipt: Codable {
+    public let latest_receipt_info: [ReceiptItem]
+  }
+
+  private let _request: URLRequest
+  private let lock = DispatchSemaphore.init(value: 1)
+
+  public init?(base64EncodedReceipt: String, password: String, sandbox: Bool = false) {
+    let postBody = "{\"receipt-data\":\"\(base64EncodedReceipt)\", \"password\":\"\(password)\"}"
+    let prefix = sandbox ? "sandbox": "buy"
+    guard let appStoreURL = URL.init(string: "https://\(prefix).itunes.apple.com/verifyReceipt")
+      else {
+        return nil
+    }
+    let bytes: [UInt8] = postBody.utf8.map { $0 }
+    var request = URLRequest.init(url: appStoreURL)
+    request.httpMethod = "POST"
+    request.httpBody = Data.init(bytes: bytes)
+    _request = request
+  }
+
+  public func validate(completion: @escaping ([ReceiptItem], Error?) -> ()) {
+    let task = URLSession.shared.dataTask(with: _request) { data, response, error in
+      if let dat = data,
+        let receipt = try? JSONDecoder.init().decode(Receipt.self, from: dat) {
+        let receipts = receipt.latest_receipt_info
+        completion(receipts, nil)
+      } else {
+        completion([], error)
+      }
+    }
+    task.resume()
+
+  }
+
+  public func syncValidate() throws -> [ReceiptItem] {
+    var receipts: [ReceiptItem] = []
+    var myError: Error? = nil
+    lock.wait()
+    validate() { r, err in
+      receipts = r
+      myError = err
+      self.lock.signal()
+    }
+    lock.wait()
+    defer {
+      lock.signal()
+    }
+    if let e = myError {
+      throw e
+    } else {
+      return receipts
+    }
+  }
 }
