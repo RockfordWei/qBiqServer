@@ -32,14 +32,6 @@ func shareTokenKey(_ uuid: Foundation.UUID, deviceId: DeviceURN) -> String {
 	return "share-token:\(uuid):\(deviceId)"
 }
 
-//func totalAccel(x: Int, y: Int, z: Int) -> Double {
-//	let xd = Double(x) / 10.0
-//	let yd = Double(y) / 10.0
-//	let zd = Double(z) / 10.0
-//	return sqrt(xd*xd + yd*yd + zd*zd)
-//}
-//sqrt( x^2+y^2+z^2)
-
 public struct QBiqStat: Codable {
   public let owned: Int
   public let followed: Int
@@ -72,6 +64,19 @@ public struct QBiqProfile: Codable {
   public let id: DeviceURN
   public let description: String
   public let tags: [String]
+}
+
+public struct QBiqLocationUpdate: Codable {
+  public let id: DeviceURN
+  public let x: Double
+  public let y: Double
+}
+
+public enum QBiqError: Error {
+  case reason(String)
+}
+
+public extension QBiqProfile {
 
   public static func load(id: DeviceURN) throws -> QBiqProfile? {
     let db = try biqDatabaseInfo.deviceDb()
@@ -87,14 +92,14 @@ public struct QBiqProfile: Codable {
   public static func setup() throws {
     let db = try biqDatabaseInfo.deviceDb()
     try db.sql(
-"""
+      """
 CREATE TABLE IF NOT EXISTS QBiqProfileRecord (
   id VARCHAR(36) NOT NULL PRIMARY KEY,
   description VARCHAR(1024) DEFAULT ''
 );
 """)
     try db.sql(
-"""
+      """
 CREATE TABLE IF NOT EXISTS QBiqProfileTag (
   id VARCHAR(36) NOT NULL,
   tag VARCHAR(64) NOT NULL,
@@ -111,12 +116,9 @@ CREATE TABLE IF NOT EXISTS QBiqProfileTag (
     let tb = db.table(QBiqProfileTag.self)
     let tbprof = db.table(QBiqProfileRecord.self)
     try db.transaction {
-      if let _ = try tbprof.where(\QBiqProfileRecord.id == self.id).first() {
-        try tbprof.update(prof)
-      } else {
-        try tbprof.insert(prof)
-      }
+			try tbprof.where(\QBiqProfileRecord.id == self.id).delete()
       try tb.where(\QBiqProfileTag.id == self.id).delete()
+			try tbprof.insert(prof)
       for t in self.tags {
         let r = QBiqProfileTag.init(id: self.id, tag: t)
         try tb.insert(r)
@@ -125,15 +127,6 @@ CREATE TABLE IF NOT EXISTS QBiqProfileTag (
   }
 }
 
-public struct QBiqLocationUpdate: Codable {
-  public let id: DeviceURN
-  public let x: Double
-  public let y: Double
-}
-
-public enum QBiqError: Error {
-  case reason(String)
-}
 // returns and obs containing the average for the given intervals
 struct AveragedObsGenerator: IteratorProtocol {
 	typealias Element = ObsDatabase.BiqObservation
@@ -705,9 +698,7 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
 							pushLimits.append(model)
 						}
 					case BiqDeviceLimitType.movementLevel.rawValue:
-            let motionLevels = [80, 40, 20, 10, 5]
-            let level = Int(limit.limitValue ?? 0)
-            let model = BiqDevicePushLimit(deviceId: deviceId, limitType: limit.limitType, limitValue: Float(motionLevels[level]), limitValueString: nil)
+            let model = BiqDevicePushLimit(deviceId: deviceId, limitType: limit.limitType, limitValue: 0, limitValueString: limit.limitValueString)
 						pushLimits.append(model)
 					case BiqDeviceLimitType.batteryLevel.rawValue:
 						()
