@@ -259,7 +259,7 @@ struct DeviceHandlers {
 		}
 		let flag = movementEnabled > 0 ? 2 : 4
 		try db.sql("UPDATE BiqDevice SET flags = \(flag) WHERE id = '\(bixid)'")
-		p.content = "device type \(flag)"
+		p.content = "\(flag)"
 		return p
 	}
 	
