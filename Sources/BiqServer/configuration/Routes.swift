@@ -50,6 +50,7 @@ func mainRoutes() -> Routes {
     deviceRoutes.add(method: .post, uri: "/location", handler: DeviceHandlers.deviceUpdateLocation)
     deviceRoutes.add(method: .post, uri: "/followers", handler: DeviceHandlers.deviceFollowers)
     deviceRoutes.add(method: .get, uri: "/tag", handler: DeviceHandlers.deviceTag)
+		deviceRoutes.add(method: .get, uri: "/type", handler: DeviceHandlers.deviceType)
 	}
 	v1.add(deviceRoutes)
 

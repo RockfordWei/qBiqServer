@@ -244,6 +244,25 @@ struct DeviceHandlers {
 		return rs
 	}
 
+	static func deviceType(session rs: RequestSession) throws -> ProfileAPIResponse {
+		var p = ProfileAPIResponse()
+		guard let bixid = rs.request.param(name: "id"),
+			let move = rs.request.param(name: "move"),
+			let movementEnabled = Int(move) else {
+				p.content = "Invalid Parameters"
+				return p
+		}
+		let db = try biqDatabaseInfo.deviceDb()
+		guard let _ = try db.table(BiqDevice.self).where(\BiqDevice.id == bixid && \BiqDevice.ownerId == rs.session.id).first() else {
+			p.content = "Unregistered device or unauthorized operation"
+			return p
+		}
+		let flag = movementEnabled > 0 ? 2 : 4
+		try db.sql("UPDATE BiqDevice SET flags = \(flag) WHERE id = '\(bixid)'")
+		p.content = "device type \(flag)"
+		return p
+	}
+	
   static func deviceTag(session rs: RequestSession) throws -> [QBiqTagSearchResult] {
     guard let tag = rs.request.param(name: "with"), !tag.isEmpty else {
       throw QBiqError.reason("empty")
