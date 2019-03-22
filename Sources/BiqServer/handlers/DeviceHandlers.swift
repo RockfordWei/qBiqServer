@@ -1007,7 +1007,7 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
       select hourid, sum(movement) as moves from (
       select extract(hour from tm - clock_timestamp()) as hourid, movement from (
       select to_timestamp(obstime/1000) as tm,
-      case (accelx * accelx + accely * accely + accelz * accelz) when 0  then 0  else 1 end as movement
+			case (abs(accely) + abs(accelz % 65535)) when 0 then 0 else abs(accelx) end as movement
       from obs where bixid = '\(deviceId)' and to_timestamp(obstime/1000) > (clock_timestamp() - interval '24 hours')
       order by obstime desc)
       as fullday)
@@ -1021,7 +1021,7 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
       select dayid, sum(movement) as moves from (
       select extract(day from tm - clock_timestamp()) as dayid, movement from (
       select to_timestamp(obstime/1000) as tm,
-      case (accelx * accelx + accely * accely + accelz * accelz) when 0  then 0  else 1 end as movement
+			case (abs(accely) + abs(accelz % 65535)) when 0  then 0 else abs(accelx) end as movement
       from obs where bixid = '\(deviceId)' and to_timestamp(obstime/1000) > (clock_timestamp() - interval '30 days')
       order by obstime desc)
       as fullmonth)
@@ -1031,11 +1031,11 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
     case .year: // 4
       sql =
 """
-      select extract(epoch from (clock_timestamp() + monthid * interval '1 month'))::int as unitid, moves from (
-      select monthid, sum(movement) as moves from (
-      select extract(month from tm - clock_timestamp()) as monthid, movement from (
+			select extract(epoch from (clock_timestamp() + monthid * interval '1 month'))::int as unitid, moves from (
+			select monthid, sum(movement) as moves from (
+			select (extract(month from tm) - extract(month from clock_timestamp())) as monthid, movement from (
       select to_timestamp(obstime/1000) as tm,
-      case (accelx * accelx + accely * accely + accelz * accelz) when 0  then 0  else 1 end as movement
+			case (abs(accely) + abs(accelz % 65535)) when 0  then 0 else abs(accelx) end as movement
       from obs where bixid = '\(deviceId)' and to_timestamp(obstime/1000) > (clock_timestamp() - interval '365 days')
       order by obstime desc)
       as fullyear)
