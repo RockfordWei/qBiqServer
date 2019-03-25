@@ -217,9 +217,6 @@ func secsToBeginningOfDay(_ secs: Double) -> Double {
 	return trueThenSecs
 }
 
-// this is in place for demo purposes
-// if the user has no biqs then share these with them
-let fakeShareIds = ["UBIQTF1111", "UBIQTF2222", "UBIQTF3333", "UBIQTF4444"]
 let defaultReportInterval = Float(3600.0)
 let defaultLimits: [DeviceAPI.DeviceLimit] = [
 	.init(limitType: .tempHigh, limitValue: 28.0, limitFlag: .none),
@@ -437,16 +434,6 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
 			
 			let ret = zip(devices, obs).map {
 				DeviceAPI.ListDevicesResponseItem(device: $0.0, shareCount: shares.next() ?? 0, lastObservation: $0.1, limits: limits.next() ?? [])
-			}
-			// this is in place for demo purposes
-			if ret.count == 0 {
-				try db1.transaction {
-					for id in fakeShareIds {
-						let share = BiqDeviceAccessPermission(userId: userId, deviceId: id)
-						try shareTable.insert(share)
-					}
-				}
-				return try deviceList(session: rs)
 			}
 			return ret
 		}
