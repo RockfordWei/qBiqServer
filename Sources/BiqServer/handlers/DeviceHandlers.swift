@@ -176,14 +176,9 @@ struct AveragedObsGenerator: IteratorProtocol {
 			battery += ob.battery
 			light += ob.light
 			humidity += ob.humidity
-			if ob.accelx != 0 {
-				x += 1
-			}
-			if ob.accely != 0 {
-				y += 1
-			}
-			if ob.accelz != 0 {
-				z += 1
+			let zz = ob.accelz & 0xFFFF
+			if ob.accelx > 0 && (ob.accely != 0 || zz != 0) {
+				x += ob.accelx
 			}
 			charging = ob.charging
 		}
