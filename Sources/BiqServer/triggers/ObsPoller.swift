@@ -111,7 +111,7 @@ extension ObsDatabase.BiqObservation {
 		self.init(client.hash(named: hashKey))
 	}
 }
-
+/*
 extension BiqDeviceLimitType: CustomStringConvertible {
 	public var description: String {
 		if self == .tempHigh {
@@ -129,7 +129,7 @@ extension BiqDeviceLimitType: CustomStringConvertible {
 		return "Invalid"
 	}
 }
-
+*/
 protocol RedisProcessingItem {
 	var key: String { get }
 	var client: RedisClient { get }
@@ -194,7 +194,9 @@ struct NotificationTask: RedisProcessingItem {
 	let batteryLevel: Double
 	let charging: Bool
 	let client: RedisClient
-	
+	let name: String
+	let alertMessage: String
+
 	func formattedObsValue(tempScale: TemperatureScale) -> String {
 		let t = BiqDeviceLimitType(rawValue: limitType)
 		if t == .tempHigh {
@@ -223,6 +225,8 @@ struct NotificationTask: RedisProcessingItem {
 		  obsValue: Double,
 		  batteryLevel: Double,
 		  charging: Bool,
+			name: String,
+			alertMessage: String,
 		  client: RedisClient) throws {
 		
 		self.userId = userId
@@ -232,8 +236,11 @@ struct NotificationTask: RedisProcessingItem {
 		self.batteryLevel = batteryLevel
 		self.charging = charging
 		self.client = client
+		self.name = name
+		self.alertMessage = alertMessage
 		self.key = "\(notificationPrefix):\(UUID().uuidString)"
 		guard try taskOK(timeout: timeout) else {
+			print("timeout \(timeout)")
 			return nil
 		}
 		var hash = RedisHash(client, name: key)
@@ -243,13 +250,18 @@ struct NotificationTask: RedisProcessingItem {
 		hash["obsValue"] = .string("\(obsValue)")
 		hash["batteryLevel"] = .string("\(batteryLevel)")
 		hash["charging"] = .string("\(charging)")
+		hash["name"] = .string(name)
+		hash["alertMessage"] = .string(alertMessage)
 		client.list(named: noteAddMsgKey).append(key)
+		print("task added")
 	}
 	
 	// init with existing task
 	init?(key: String, client: RedisClient) throws {
 		let hash = RedisHash(client, name: key)
+		print("init with existing task")
 		guard hash.exists else {
+			print("existed. skipped")
 			return nil
 		}
 		guard let userIdR = hash["userId"]?.string,
@@ -258,12 +270,14 @@ struct NotificationTask: RedisProcessingItem {
 				let obsValueR = hash["obsValue"]?.string,
 				let batteryLevelR = hash["batteryLevel"]?.string,
 				let chargingR = hash["charging"]?.string,
-			
+				let biqName = hash["name"]?.string,
+				let alert = hash["alertMessage"]?.string,
 				let userId = UUID(uuidString: userIdR),
 				let limitType = UInt8(limitTypeR),
 				let obsValue = Double(obsValueR),
 				let batteryLevel = Double(batteryLevelR),
 				let charging = Bool(chargingR) else {
+					print("unexpected content")
 			try client.delete(keys: key)
 			return nil
 		}
@@ -275,6 +289,8 @@ struct NotificationTask: RedisProcessingItem {
 		self.batteryLevel = batteryLevel
 		self.charging = charging
 		self.client = client
+		self.alertMessage = alert
+		self.name = biqName
 	}
 	
 	private var notificationIgnoreKey: String {
@@ -289,6 +305,14 @@ struct NotificationTask: RedisProcessingItem {
 		}
 		return true
 	}
+}
+
+public extension BiqDeviceLimitType {
+
+	static let humidityLow = BiqDeviceLimitType(rawValue: 12)
+	static let humidityHigh = BiqDeviceLimitType(rawValue: 13)
+	static let brightnessLow = BiqDeviceLimitType(rawValue: 14)
+	static let brightnessHigh = BiqDeviceLimitType(rawValue: 15)
 }
 
 struct ObsPoller: RedisWorker {
@@ -317,108 +341,140 @@ struct ObsPoller: RedisWorker {
 		}
 		return try handleNewObs(obs, client: client)
 	}
+
+	enum NoteType {
+		case checkIn
+		case motion
+		case temperature(Double, Bool)
+		case humidity(Int)
+		case brightness(Int)
+	}
+
+	private func isObsMoved(_ obs: ObsDatabase.BiqObservation) -> Bool {
+		let counter = obs.accelx
+		let xy = obs.accely
+		let z = obs.accelz & 0xFFFF
+		let moved = xy != 0 || z != 0
+		return counter > 0 && moved
+	}
+
+	private func isObsOverHumid(_ obs: ObsDatabase.BiqObservation, limits: [BiqDeviceLimit] = []) -> Bool {
+		let lim: [(Int, BiqDeviceLimitType)] = limits.map { limitaion -> (Int, BiqDeviceLimitType) in
+			return (Int(limitaion.limitValue), BiqDeviceLimitType.init(rawValue: limitaion.limitType))
+			}
+		guard let low = (lim.filter { $0.1 == .humidityLow}).first,
+			let high = (lim.filter { $0.1 == .humidityHigh}).first else { return false }
+		return obs.humidity < low.0 || obs.humidity > high.0
+	}
+
+	private func isObsOverBright(_ obs: ObsDatabase.BiqObservation, limits: [BiqDeviceLimit] = []) -> Bool {
+		let lim: [(Int, BiqDeviceLimitType)] = limits.map { limitaion -> (Int, BiqDeviceLimitType) in
+			return (Int(limitaion.limitValue), BiqDeviceLimitType.init(rawValue: limitaion.limitType))
+		}
+		guard let low = (lim.filter { $0.1 == .brightnessLow}).first,
+			let high = (lim.filter { $0.1 == .brightnessHigh}).first else { return false }
+		return obs.light < low.0 || obs.light > high.0
+	}
+
+	private func isObsOverTemperature(_ obs: ObsDatabase.BiqObservation, limits: [BiqDeviceLimit] = []) -> Bool {
+		let lim: [(Float, BiqDeviceLimitType)] = limits.map { limitaion -> (Float, BiqDeviceLimitType) in
+			return (limitaion.limitValue, BiqDeviceLimitType.init(rawValue: limitaion.limitType))
+		}
+		guard let low = (lim.filter { $0.1 == .tempLow}).first,
+			let high = (lim.filter { $0.1 == .tempHigh}).first else { return false }
+		let temp = Float(obs.temp)
+		return temp < low.0 || temp > high.0
+	}
+
+	private func getNoteType(_ obs: ObsDatabase.BiqObservation) throws -> NoteType? {
+		let db = try biqDatabaseInfo.deviceDb()
+		guard let device = try db.table(BiqDevice.self).where(\BiqDevice.id == obs.deviceId).first(),
+		let owner = device.ownerId else { return nil }
+		let limits:[BiqDeviceLimit] = try db.table(BiqDeviceLimit.self)
+			.where(\BiqDeviceLimit.deviceId == obs.deviceId && \BiqDeviceLimit.userId == owner)
+			.select().map { $0 }
+		if isObsMoved(obs) { return .motion }
+		if isObsOverBright(obs, limits: limits) { return .brightness(obs.light) }
+		if isObsOverHumid(obs, limits: limits) { return .humidity(obs.humidity) }
+		if isObsOverTemperature(obs, limits: limits) {
+			let lim: [(Float, BiqDeviceLimitType)] = limits.map { limitaion -> (Float, BiqDeviceLimitType) in
+				return (limitaion.limitValue, BiqDeviceLimitType.init(rawValue: limitaion.limitType))
+			}
+			let scale = lim.filter { $0.1 == .tempScale }.first
+			let farhrenheit: Bool
+			if let farh = scale, farh.0 > 0 {
+				farhrenheit = true
+			} else {
+				farhrenheit = false
+			}
+			return .temperature(obs.temp, farhrenheit)
+		}
+		return .checkIn
+	}
+
 	private func handleNewObs(_ obj: ProcessingObs, client: RedisClient) throws -> Bool {
+		// ignore unregistered device
+		print("handling obj: ", obj.obs)
+
+		guard let noteType = try getNoteType(obj.obs) else {
+			print("note type is invalid")
+			return false
+		}
+
 		let db = try biqDatabaseInfo.deviceDb()
 		let deviceId = obj.obs.deviceId
-    let biqName: String
-    let movable: Bool
-    let ownerId: UserId?
-    if let device = try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId).first() {
-      biqName = device.name
-      movable = device.flags == 2
-      ownerId = device.ownerId
-    } else {
-      biqName = deviceId
-      movable = false
-      ownerId = nil
-    }
+		guard let device = try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId).first() else { return false }
+		let biqName: String
+		if device.name.count > 0 {
+			biqName = device.name
+		} else {
+			let last = deviceId.endIndex
+			let begin = deviceId.index(last, offsetBy: -6)
+			biqName = String(deviceId[begin..<last])
+		}
 
-    let alertMessage: String?
-    if movable {
-      let moved = abs(obj.obs.accelx) + abs(obj.obs.accely) + abs(obj.obs.accelz) > 0
-      if moved {
-        alertMessage = "\(biqName) has moved"
-      } else {
-        alertMessage = nil
-      }
-    } else {
-      let triggersForChat: [BiqDeviceLimit] = try db.sql(
-        """
-        SELECT * FROM biqdevicelimit WHERE deviceid = $1
-        AND userid IN (SELECT ownerid FROM biqdevice WHERE id = $1 LIMIT 1)
-        AND (
-        (limittype = \(BiqDeviceLimitType.tempHigh.rawValue) AND limitvalue <= $2)
-        OR
-        (limittype = \(BiqDeviceLimitType.tempLow.rawValue) AND limitvalue >= $2)
-        )
-        """,
-        bindings: [
-          ("$1", .string(deviceId)),
-          ("$2", .decimal(obj.obs.temp))
-        ], BiqDeviceLimit.self)
+		//let ownerId = device.ownerId
 
-      let limitsTable = db.table(BiqDeviceLimit.self)
-      let tempScale: TemperatureScale
-      if let oid = ownerId, let value = try limitsTable
-        .where(\BiqDeviceLimit.deviceId == deviceId &&
-          \BiqDeviceLimit.userId == oid &&
-          \BiqDeviceLimit.limitType == BiqDeviceLimitType.tempScale.rawValue).first()?.limitValue, let scale = TemperatureScale(rawValue: Int(value)) {
-        tempScale = scale
-      } else {
-        tempScale = .celsius
-      }
-      if let lm = triggersForChat.first {
-        let ltype = lm.type == .tempHigh ? "highest" : "lowest"
-        let v = tempScale.formatC(obj.obs.temp)
-        alertMessage = "Temperature exceeded the \(ltype) threshold at \(v)"
-      } else {
-        alertMessage = nil
-      }
-    }
+		let alert: String
+		switch noteType {
+		case .temperature(let temp, let farhrenheit):
+			let tempScale = farhrenheit ? TemperatureScale.fahrenheit : TemperatureScale.celsius
+			let tempString = tempScale.formatC(temp)
+			alert = "\(biqName): temperature is reaching \(tempString)"
+		case .humidity(let humidity):
+			alert = "\(biqName): humidity is reaching \(humidity)%"
+		case .brightness(let lightLevel):
+			alert = "\(biqName): light level is reaching \(lightLevel)%"
+		case .motion:
+			alert = "\(biqName): device has been moved"
+		default:
+			// ignore check-in
+			return false
+		}
 
-    if let msg = alertMessage {
-      let adb = try biqDatabaseInfo.authDb()
-      try adb.sql("INSERT INTO chatlog(topic, poster, content) VALUES($1, $1, $2)",
-                 bindings:  [("$1", .string(deviceId)), ("$2", .string(msg))])
-      CRUDLogging.log(.info, msg)
-    }
-    
-		let triggers: [BiqDeviceLimit] = try db.sql(
-			"""
-			select * from biqdevicelimit
-			where deviceid = $1
-				and userid in (select userid from biqdevicelimit where deviceid = $1 and limittype = \(BiqDeviceLimitType.notifications.rawValue) and limitvalue != 0)
-				and (
-					(limittype = \(BiqDeviceLimitType.tempHigh.rawValue) and limitvalue <= $2)
-					or (limittype = \(BiqDeviceLimitType.tempLow.rawValue) and limitvalue >= $2)
-					or (limittype = \(BiqDeviceLimitType.movementLevel.rawValue) and ($3 != 0 or $4 != 0 or $5 != 0 )))
-			""",
-			bindings: [
-				("$1", .string(deviceId)),
-				("$2", .decimal(obj.obs.temp)),
-				("$3", .integer(obj.obs.accelx)),
-        ("$4", .integer(obj.obs.accely)),
-        ("$5", .integer(obj.obs.accelz))
-				],
-			BiqDeviceLimit.self)
+		print(alert)
+		let adb = try biqDatabaseInfo.authDb()
+		try adb.sql("INSERT INTO chatlog(topic, poster, content) VALUES($1, $1, $2)",
+								bindings:  [("$1", .string(deviceId)), ("$2", .string(alert))])
+
+		let triggers: [BiqDeviceLimit] = try db.table(BiqDeviceLimit.self)
+			.where(\BiqDeviceLimit.deviceId == deviceId &&
+				\BiqDeviceLimit.limitType == BiqDeviceLimitType.notifications.rawValue &&
+				\BiqDeviceLimit.limitValue != 0).select().map { $0 }
 		for limit in triggers {
-			guard let notesLimit = try db.table(BiqDeviceLimit.self)
-				.where(\BiqDeviceLimit.userId == limit.userId
-					&& \BiqDeviceLimit.deviceId == deviceId
-					&& \BiqDeviceLimit.limitType == BiqDeviceLimitType.notifications.rawValue).first()?.limitValue else {
-						continue
-			}
 			if let _ = try NotificationTask(userId: limit.userId,
-											timeout: TimeInterval(notesLimit),
+											timeout: TimeInterval(limit.limitValue),
 											deviceId: obj.obs.deviceId,
 											limitType: limit.limitType,
 											obsValue: limit.valueFromObs(obj.obs),
 											batteryLevel: obj.obs.battery,
 											charging: obj.obs.charging != 0,
+											name: biqName,
+											alertMessage: alert,
 											client: client) {
-				CRUDLogging.log(.info, "Ready for user/device: \(limit.userId):\(obj.obs.deviceId):\(limit.limitType)")
+				CRUDLogging.log(.info, "Ready for user/device: \(limit.userId):\(obj.obs.deviceId):\(alert)")
 			} else {
-				CRUDLogging.log(.info, "User/device in ignore list: \(limit.userId):\(obj.obs.deviceId):\(limit.limitType)")
+				CRUDLogging.log(.info, "User/device in ignore list: \(limit.userId):\(obj.obs.deviceId):\(alert)")
 			}
 		}
 		try obj.delete(removeList: obsInProgressMsgKey)
@@ -428,7 +484,7 @@ struct ObsPoller: RedisWorker {
 
 struct NotePoller: RedisWorker {
 	typealias State = Bool
-	
+
 	let workPauseSeconds: TimeInterval = 5.0
 	func run(workGroup: RedisWorkGroup, state: Bool?) -> Bool? {
 		do {
@@ -453,25 +509,23 @@ struct NotePoller: RedisWorker {
 		return true
 	}
 	private func handleNewObs(_ obj: NotificationTask, client: RedisClient) throws {
-		let limitType = BiqDeviceLimitType(rawValue: obj.limitType)
-		let isOwner: Bool
-		let biqName: String
+		print("handing tasking: ", obj)
+		let db = try biqDatabaseInfo.authDb()
+		let aliasTable = db.table(AliasBrief.self)
+		let mobileTable = db.table(MobileDeviceId.self)
+		let userIds = try aliasTable.where(\AliasBrief.account == obj.userId).select().map { $0.address }
+		let biqName = obj.name
 		let biqColour: String
-		let biqId = obj.deviceId
+		let isOwner: Bool
 		let tempScale: TemperatureScale
-    let movable: Bool
 		do {
-			let db = try biqDatabaseInfo.deviceDb()
-			if let device = try db.table(BiqDevice.self).where(\BiqDevice.id == obj.deviceId).first() {
-				biqName = device.name
+			let ddb = try biqDatabaseInfo.deviceDb()
+			if let device = try ddb.table(BiqDevice.self).where(\BiqDevice.id == obj.deviceId).first() {
 				isOwner = device.ownerId == obj.userId
-        movable = device.flags == 2
 			} else {
-				biqName = obj.deviceId
 				isOwner = true
-        movable = false
 			}
-			let limitsTable = db.table(BiqDeviceLimit.self)
+			let limitsTable = ddb.table(BiqDeviceLimit.self)
 			if let colour = try limitsTable
 				.where(\BiqDeviceLimit.deviceId == obj.deviceId &&
 					\BiqDeviceLimit.userId == obj.userId &&
@@ -489,14 +543,9 @@ struct NotePoller: RedisWorker {
 				tempScale = .celsius
 			}
 		}
-		let db = try biqDatabaseInfo.authDb()
-		let aliasTable = db.table(AliasBrief.self)
-		let mobileTable = db.table(MobileDeviceId.self)
-		let userIds = try aliasTable.where(\AliasBrief.account == obj.userId).select().map { $0.address }
 		if !userIds.isEmpty {
 			let userDevices = try mobileTable.where(\MobileDeviceId.aliasId ~ userIds).select().map { $0.deviceId }
 			let formattedValue = obj.formattedObsValue(tempScale: tempScale)
-      let alertMessage = limitType == .movementLevel && movable ? "\(biqName) has been moved" : "Alert triggered for \(biqName) with \(limitType.description) at \(formattedValue)"
 			CRUDLogging.log(.info, "Notification for \(obj.userId) \(obj.deviceId) \(obj.limitType) \(userDevices.joined(separator: " "))")
 			let promise: Promise<Bool> = Promise {
 				p in
@@ -505,7 +554,7 @@ struct NotePoller: RedisWorker {
 					deviceTokens: userDevices,
 					notificationItems: [
 						.customPayload("qbiq.name", biqName),
-						.customPayload("qbiq.id", biqId),
+						.customPayload("qbiq.id", obj.deviceId),
 						.customPayload("qbiq.colour", biqColour),
 						.customPayload("qbiq.battery", obj.batteryLevel),
 						.customPayload("qbiq.charging", obj.charging),
@@ -513,9 +562,9 @@ struct NotePoller: RedisWorker {
 						.customPayload("qbiq.value", formattedValue),
 						.mutableContent,
 						.category("qbiq.alert"),
-						.threadId(biqId),
-						.alertTitle("\(limitType.description) Alert"),
-						.alertBody(alertMessage)]) {
+						.threadId(obj.deviceId),
+						.alertTitle(biqName),
+						.alertBody(obj.alertMessage)]) {
 							responses in
 							try? obj.delete(removeList: noteInProgressMsgKey)
 							p.set(true)
