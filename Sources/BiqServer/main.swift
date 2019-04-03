@@ -24,6 +24,7 @@ extension String {
 }
 
 _ = PerfectCrypto.isInitialized
+let biqIAPSecret = "BIQ_IA_PKEY".env()
 
 CRUDLogging.queryLogDestinations = []
 
@@ -49,7 +50,6 @@ let redisAddr = RedisClientIdentifier(withHost: "BIQ_RD_HOST".env("localhost"), 
 let workGroup = RedisWorkGroup(redisAddr)
 workGroup.add(worker: TheWatcher())
 workGroup.add(worker: ObsPoller())
-workGroup.add(worker: NotePoller())
 
 let routes = mainRoutes()
 try HTTPServer.launch(.secureServer(TLSConfiguration(certPath: "/root/combo.crt", keyPath: "/root/server.key"),
