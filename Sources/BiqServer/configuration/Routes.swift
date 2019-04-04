@@ -42,7 +42,6 @@ func mainRoutes() -> Routes {
 		deviceRoutes.add(method: .post, uri: "/unshare", handler: DeviceHandlers.deviceUnshare)
 		deviceRoutes.add(method: .post, uri: "/update", handler: DeviceHandlers.deviceUpdate)
 		deviceRoutes.add(method: .get, uri: "/obs", handler: DeviceHandlers.deviceObs)
-    deviceRoutes.add(method: .get, uri: "/sum", handler: DeviceHandlers.deviceSum)
 		deviceRoutes.add(method: .post, uri: "/obs/delete", handler: DeviceHandlers.deviceDeleteObs)
 		deviceRoutes.add(method: .get, uri: "/info", handler: DeviceHandlers.deviceInfo)
 		deviceRoutes.add(method: .get, uri: "/limits", handler: DeviceHandlers.deviceGetLimits)
