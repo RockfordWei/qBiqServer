@@ -732,10 +732,10 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
                                limitType: limit.limitType,
                                limitValue: Float(v),
                                limitValueString: ""))
-					case BiqDeviceLimitType.lightLevel.rawValue, BiqDeviceLimitType.humidityLevel.rawValue:
-						// 0x6400 = upper(100) << 8 + lower(0)
-						let v = limit.limitValue ?? Float(0x6400)
-						pushLimits.append(BiqDevicePushLimit(deviceId: deviceId, limitType: limit.limitType, limitValue: v, limitValueString: nil))
+					case BiqDeviceLimitType.lightLevel.rawValue:
+						()
+					case BiqDeviceLimitType.humidityLevel.rawValue:
+						()
 					default:
 						()
 					}
@@ -940,6 +940,97 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
 			return averageObs
 		}
 	}
+
+  struct MovementSummary : Codable {
+    public var unitid = 0
+    public var moves = 0
+  }
+
+  static func deviceSum(session rs: RequestSession) throws -> [MovementSummary] {
+    typealias BiqObservation = ObsDatabase.BiqObservation
+    let (request, session) = rs
+    let obsRequest: DeviceAPI.ObsRequest = try request.decode()
+    let deviceId = obsRequest.deviceId
+    guard let interval = DeviceAPI.ObsRequest.Interval(rawValue: obsRequest.interval) else {
+      throw HTTPResponseError(status: .badRequest, description: "Invalid interval.")
+    }
+    let dbDev = try biqDatabaseInfo.deviceDb()
+    let deviceTable = dbDev.table(BiqDevice.self)
+
+    guard let currentDevice = try deviceTable.where(\BiqDevice.id == deviceId).first() else {
+      throw HTTPResponseError(status: .badRequest, description: "Invalid device.")
+    }
+    if currentDevice.ownerId != session.id, let flags = currentDevice.flags {
+      if flags & BiqDeviceFlag.locked.rawValue != 0 {
+        throw HTTPResponseError(status: .forbidden, description: "Device has been locked by owner.")
+      }
+    }
+
+    do { // screen for access
+      let userId = session.id
+      let db = Database(configuration: try biqDatabaseInfo.databaseConfiguration())
+      let table = db.table(BiqDevice.self)
+      let count = try table
+        .join(\.accessPermissions, on: \.id, equals: \.deviceId)
+        .where(
+          \BiqDevice.id == deviceId &&
+            (\BiqDevice.ownerId == userId ||
+              \BiqDeviceAccessPermission.userId == userId)).count()
+      guard count != 0 else {
+        throw HTTPResponseError(status: .badRequest, description: "User is not device owner and device has not been shared.")
+      }
+    }
+    let sql: String
+    switch interval {
+    case .day: // 2
+      sql =
+"""
+      select extract(epoch from (clock_timestamp() + hourid * interval '1 hour'))::int as unitid, moves from (
+      select hourid, sum(movement) as moves from (
+      select extract(hour from tm - clock_timestamp()) as hourid, movement from (
+      select to_timestamp(obstime/1000) as tm,
+			case (abs(accely) + abs(accelz % 65535)) when 0 then 0 else abs(accelx) end as movement
+      from obs where bixid = '\(deviceId)' and to_timestamp(obstime/1000) > (clock_timestamp() - interval '24 hours')
+      order by obstime desc)
+      as fullday)
+      as summary group by hourid order by hourid desc)
+      as polished;
+"""
+    case .month: // 3
+      sql =
+"""
+      select extract(epoch from (clock_timestamp() + dayid * interval '1 day'))::int as unitid, moves from (
+      select dayid, sum(movement) as moves from (
+      select extract(day from tm - clock_timestamp()) as dayid, movement from (
+      select to_timestamp(obstime/1000) as tm,
+			case (abs(accely) + abs(accelz % 65535)) when 0  then 0 else abs(accelx) end as movement
+      from obs where bixid = '\(deviceId)' and to_timestamp(obstime/1000) > (clock_timestamp() - interval '30 days')
+      order by obstime desc)
+      as fullmonth)
+      as summary group by dayid order by dayid desc)
+      as polished;
+"""
+    case .year: // 4
+      sql =
+"""
+			select extract(epoch from (clock_timestamp() + monthid * interval '1 month'))::int as unitid, moves from (
+			select monthid, sum(movement) as moves from (
+			select (extract(month from tm) - extract(month from clock_timestamp())) as monthid, movement from (
+      select to_timestamp(obstime/1000) as tm,
+			case (abs(accely) + abs(accelz % 65535)) when 0  then 0 else abs(accelx) end as movement
+      from obs where bixid = '\(deviceId)' and to_timestamp(obstime/1000) > (clock_timestamp() - interval '365 days')
+      order by obstime desc)
+      as fullyear)
+      as summary group by monthid order by monthid desc)
+      as polished;
+"""
+    default:
+      throw HTTPResponseError(status: .badRequest, description: "Invalid interval")
+    }
+
+    let db = try biqDatabaseInfo.obsDb()
+    return try db.sql(sql, MovementSummary.self)
+  }
 }
 
 
