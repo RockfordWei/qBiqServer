@@ -74,6 +74,20 @@ extension RedisHash {
 }
 
 extension ObsDatabase.BiqObservation {
+	/*
+	"bixid":"K0121-1001-8RATEE",
+	"firmware":"QESP_D1.0.88",
+	"charging":1,
+	"light":10,
+	"id":0,
+	"temp":34.7,
+	"obstime":1528746701987.0,
+	"humidity":19,
+	"accelx":0,
+	"accelz":0,
+	"accely":0,
+	"battery":0.0}
+	*/
 	init?(_ hash: RedisHash) {
 		guard let deviceId = hash.value(forKey: "bixid") else {
 			return nil
@@ -97,7 +111,25 @@ extension ObsDatabase.BiqObservation {
 		self.init(client.hash(named: hashKey))
 	}
 }
-
+/*
+extension BiqDeviceLimitType: CustomStringConvertible {
+	public var description: String {
+		if self == .tempHigh {
+			return "High Temperature"
+		}
+		if self == .tempLow {
+			return "Low Temperature"
+		}
+		if self == .movementLevel {
+			return "Movement Level"
+		}
+		if self == .batteryLevel {
+			return "Battery Level"
+		}
+		return "Invalid"
+	}
+}
+*/
 protocol RedisProcessingItem {
 	var key: String { get }
 	var client: RedisClient { get }
@@ -192,11 +224,11 @@ struct ObsPoller: RedisWorker {
 	}
 
 	private func isObsMoved(_ obs: ObsDatabase.BiqObservation) -> Bool {
-		let counter = obs.accelx & 0xFFFF
+		let counter = obs.accelx
 		let xy = obs.accely
 		let z = obs.accelz & 0xFFFF
 		let moved = xy != 0 || z != 0
-		CRUDLogging.log(.error, "motional data: \(counter), \(xy), \(z), \(moved), conclusion: \(counter > 0 && moved)")
+		print("motional data: ", counter, xy, z, moved, "conclusion: ", counter > 0 && moved)
 		return counter > 0 && moved
 	}
 
@@ -215,21 +247,19 @@ struct ObsPoller: RedisWorker {
 	}
 	private func isObsOverHumid(_ obs: ObsDatabase.BiqObservation, limits: [BiqDeviceLimit] = []) -> Bool {
 		guard let lim = (limits.filter { $0.type == .humidityLevel }.first) else {
-			CRUDLogging.log(.error, "no humidity threshold found")
+			print("no humidity threshold found")
 			return false
 		}
 		let threshold = getThresholds(value: lim.limitValue)
-		CRUDLogging.log(.error, "humidity: \(obs.humidity) in range: [\(threshold.low), \(threshold.high)]")
 		return obs.humidity < threshold.low || obs.humidity > threshold.high
 	}
 
 	private func isObsOverBright(_ obs: ObsDatabase.BiqObservation, limits: [BiqDeviceLimit] = []) -> Bool {
 		guard let lim = (limits.filter { $0.type == .lightLevel }.first) else {
-			CRUDLogging.log(.error, "no brightness threshold found")
+			print("no brightness threshold found")
 			return false
 		}
 		let threshold = getThresholds(value: lim.limitValue)
-		CRUDLogging.log(.error, "brightness: \(obs.light) in range: [\(threshold.low), \(threshold.high)]")
 		return obs.light < threshold.low || obs.light > threshold.high
 	}
 
@@ -237,14 +267,14 @@ struct ObsPoller: RedisWorker {
 		let lim: [(Float, BiqDeviceLimitType)] = limits.map { limitaion -> (Float, BiqDeviceLimitType) in
 			return (limitaion.limitValue, BiqDeviceLimitType.init(rawValue: limitaion.limitType))
 		}
-		CRUDLogging.log(.error, "temperature limits: \(lim.count)")
+		print("temperature limits: ", lim.count)
 		guard let low = (lim.filter { $0.1 == .tempLow}).first,
 			let high = (lim.filter { $0.1 == .tempHigh}).first else {
-				CRUDLogging.log(.error, "no temperature threshold found")
+				print("no temperature threshold found")
 				return false
 		}
 		let temp = Float(obs.temp)
-		CRUDLogging.log(.error, "temperature: \(temp) in range:[\(low.0), \(high.0)]")
+		print("temperature: ", temp, "\trange:[\(low.0), \(high.0)]")
 		return temp < low.0 || temp > high.0
 	}
 
@@ -255,7 +285,7 @@ struct ObsPoller: RedisWorker {
 		let limits:[BiqDeviceLimit] = try db.table(BiqDeviceLimit.self)
 			.where(\BiqDeviceLimit.deviceId == obs.deviceId && \BiqDeviceLimit.userId == owner)
 			.select().map { $0 }
-		CRUDLogging.log(.error, "note type inspecting: \(limits.count) threshold found for owner \(owner.uuidString)")
+		print("note type inspecting: ", limits.count, " threshold found for owner", owner.uuidString)
 		if isObsMoved(obs) { return .motion }
 		if isObsOverBright(obs, limits: limits) { return .brightness(obs.light) }
 		if isObsOverHumid(obs, limits: limits) { return .humidity(obs.humidity) }
@@ -310,17 +340,17 @@ struct ObsPoller: RedisWorker {
 	}
 	private func handleNewObs(_ obj: ProcessingObs, client: RedisClient) throws -> Bool {
 		// ignore unregistered device
-		CRUDLogging.log(.error, "handling incoming obj: \(obj.obs.deviceId)")
+		print("handling incoming obj: ", obj.obs)
 
 		guard let noteType = try getNoteType(obj.obs) else {
-			CRUDLogging.log(.error, "note type is invalid")
+			print("note type is invalid")
 			return false
 		}
 
 		let db = try biqDatabaseInfo.deviceDb()
 		let deviceId = obj.obs.deviceId
 		guard let device = try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId).first() else { return false }
-		CRUDLogging.log(.error, "checking device \(deviceId)")
+		print("checking device \(deviceId)")
 		let biqName: String
 		if device.name.count > 0 {
 			biqName = device.name
@@ -330,7 +360,7 @@ struct ObsPoller: RedisWorker {
 			biqName = String(deviceId[begin..<last])
 		}
 
-		CRUDLogging.log(.error, "device name = \(biqName)")
+		print("device name = ", biqName)
 		let alert: String
 		switch noteType {
 		case .temperature(let temp, let farhrenheit):
@@ -345,7 +375,7 @@ struct ObsPoller: RedisWorker {
 			alert = "\(biqName): device has been moved over \(obj.obs.accelx & 0xFFFF) times"
 		default:
 			// ignore check-in
-			CRUDLogging.log(.error, "ignore regular check-in")
+			print("ignore regular check-in")
 			return false
 		}
 
@@ -357,14 +387,14 @@ struct ObsPoller: RedisWorker {
 			.where(\BiqDeviceLimit.deviceId == deviceId &&
 				\BiqDeviceLimit.limitType == BiqDeviceLimitType.notifications.rawValue &&
 				\BiqDeviceLimit.limitValue != 0).select().map { $0 }
-		CRUDLogging.log(.error, "\(triggers.count) triggers found")
+		print("\(triggers.count) triggers found")
 		let limitsTable = db.table(BiqDeviceLimit.self)
 		for limit in triggers {
 			let aliasTable = adb.table(AliasBrief.self)
 			let mobileTable = adb.table(MobileDeviceId.self)
 			let userIds = try aliasTable.where(\AliasBrief.account == limit.userId).select().map { $0.address }
 			if userIds.isEmpty { continue }
-			CRUDLogging.log(.error, "\(userIds.count) users found")
+			print("\(userIds.count) users found")
 			let userDevices = try mobileTable.where(\MobileDeviceId.aliasId ~ userIds).select().map { $0.deviceId }
 			let timeoutKey = "\(limit.userId)/\(deviceId)"
 			let now = time(nil)
@@ -373,16 +403,17 @@ struct ObsPoller: RedisWorker {
 			if let timeout = ObsPoller.timeouts[timeoutKey] {
 				if now > (timeout + seconds) {
 					ObsPoller.timeouts[timeoutKey] = now
-					CRUDLogging.log(.error, "timeout expired. sending notification now")
+					print("timeout expired. sending notification now")
 				} else {
 					// skip this notification
-					CRUDLogging.log(.error, "sendBiqNotification: skip \(timeoutKey)")
+					CRUDLogging.log(.info, "sendBiqNotification: skip \(timeoutKey)")
 					continue;
 				}
 			} else {
-				CRUDLogging.log(.error, "No timeout found. sending notification now")
+				print("No timeout found. sending notification now")
 				ObsPoller.timeouts[timeoutKey] = now
 			}
+			print("sending notification")
 			do {
 				let biqColour: String
 				if let colour = try limitsTable
@@ -400,7 +431,7 @@ struct ObsPoller: RedisWorker {
 																 formattedValue: "\(obj.obs.humidity)%", alertMessage: alert)
 			}
 		}
-		CRUDLogging.log(.error, "notification cleaning up")
+		print("notification cleaning up")
 		try obj.delete(removeList: obsInProgressMsgKey)
 		return true
 	}
