@@ -24,7 +24,7 @@ extension String {
 }
 
 _ = PerfectCrypto.isInitialized
-
+let biqIAPSecret = "BIQ_IA_PKEY".env()
 CRUDLogging.queryLogDestinations = []
 
 let port = 443
