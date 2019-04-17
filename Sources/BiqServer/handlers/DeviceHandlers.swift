@@ -18,6 +18,19 @@ func shareTokenKey(_ uuid: Foundation.UUID, deviceId: DeviceURN) -> String {
 	return "share-token:\(uuid):\(deviceId)"
 }
 
+/// History Record data control
+public struct BiqBookmark: Codable, IdHashable {
+	/// The permanent unique id for this qBiq device.
+	public let id: DeviceURN
+	/// The bookmark point
+	public let timestamp: Double
+	/// Init a new BiqBookmark struct.
+	public init(id i: DeviceURN, timestamp t: Double) {
+		id = i
+		timestamp = t
+	}
+}
+
 public struct QBiqStat: Codable {
   public let owned: Int
   public let followed: Int
@@ -149,6 +162,24 @@ private func userHasDeviceAccess<C: DatabaseConfigurationProtocol>(db: Database<
 struct DeviceHandlers {
 	static func identity(session rs: RequestSession) throws -> RequestSession {
 		return rs
+	}
+
+	static func setBookmark(session rs: RequestSession) throws -> ProfileAPIResponse {
+		guard let body = rs.request.postBodyBytes else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid Parameter")
+		}
+		let data = Data.init(bytes: body)
+		let bookmark = try JSONDecoder.init().decode(BiqBookmark.self, from: data)
+		let db = try biqDatabaseInfo.deviceDb()
+		guard let _ = try db.table(BiqDevice.self).where(\BiqDevice.id == bookmark.id && \BiqDevice.ownerId == rs.session.id).first() else {
+			throw HTTPResponseError(status: .badRequest, description: "Unregistered device or invalid ownership")
+		}
+		let table = db.table(BiqBookmark.self)
+		try db.transaction {
+			try table.where(\BiqBookmark.id == bookmark.id).delete()
+			try table.insert(bookmark)
+		}
+		return ProfileAPIResponse(content: "ok")
 	}
 
 	static func deviceType(session rs: RequestSession) throws -> ProfileAPIResponse {
@@ -894,33 +925,52 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
 		}
 
 		
+		let bookmarkTable = dbDev.table(BiqBookmark.self)
+		var history = Double(0)
+		if let bookmark = try bookmarkTable.where(\BiqBookmark.id == deviceId).first() {
+			history = bookmark.timestamp
+		}
 		let db = try biqDatabaseInfo.obsDb()
 		let table = db.table(BiqObservation.self)
 		let now = Date().timeIntervalSince1970
 		let oneHour = 60.0 * 60.0
+		var earliest = Double(0)
 		switch interval {
 		case .all: // 0
 			return try table
 				.order(by: \.obstime)
-					.where(\BiqObservation.deviceId == deviceId).select().map{$0}
+				.where(\BiqObservation.deviceId == deviceId).select().map{$0}.filter { $0.obstime > history }
 		case .live: // 1 - last 8 hours
 			// move time back to beginning of hour, 8 hours ago
-			let earliest = secsToBeginningOfHour(now - (oneHour * 8))
+			earliest = secsToBeginningOfHour(now - (oneHour * 8)) * 1000.0
+			print(earliest, history, earliest - history)
+			if history > earliest {
+				earliest = history
+			}
 			let obs = try table
 				.order(by: \.obstime)
 				.where(
 					\BiqObservation.deviceId == deviceId &&
-						\BiqObservation.obstime >= (earliest * 1000)).select().map{$0}
+						\BiqObservation.obstime >= earliest).select().map{$0}
 			return smooth(obs)
 		case .day: // 2
-			let earliest = secsToBeginningOfDay(now - (oneHour * 24))
-			return try obsSummary(earliest: earliest * 1000, bixid: deviceId, unitScale: 1)
+			earliest = secsToBeginningOfDay(now - (oneHour * 24)) * 1000.0
+			if history > earliest {
+				earliest = history
+			}
+			return try obsSummary(earliest: earliest, bixid: deviceId, unitScale: 1)
 		case .month: // 3
-			let earliest = secsToBeginningOfDay(now - (oneHour * 24 * 31))
-			return try obsSummary(earliest: earliest * 1000, bixid: deviceId, unitScale: 24)
+			earliest = secsToBeginningOfDay(now - (oneHour * 24 * 31))
+			if history > earliest {
+				earliest = history
+			}
+			return try obsSummary(earliest: earliest, bixid: deviceId, unitScale: 24)
 		case .year: // 4
-			let earliest = secsToBeginningOfDay(now - (oneHour * 24 * 365))
-			return try obsSummary(earliest: earliest * 1000, bixid: deviceId, unitScale: 720)
+			earliest = secsToBeginningOfDay(now - (oneHour * 24 * 365)) * 1000.0
+			if history > earliest {
+				earliest = history
+			}
+			return try obsSummary(earliest: earliest, bixid: deviceId, unitScale: 720)
 		}
 	}
 }

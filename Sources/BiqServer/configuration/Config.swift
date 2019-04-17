@@ -155,7 +155,7 @@ extension CloudFormation.RDSInstance {
 			}
 		}
 		let db = try deviceDb()
-		
+		try db.create(BiqBookmark.self, policy: [.reconcileTable, .shallow]).index(\BiqBookmark.id)
 		try db.create(BiqDevice.self, policy: [.reconcileTable, .shallow])
 			.index(\BiqDevice.ownerId)
 		try db.create(BiqDeviceGroup.self, policy: [.reconcileTable, .shallow])
