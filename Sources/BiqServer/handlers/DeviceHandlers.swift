@@ -12,20 +12,6 @@ import SwiftCodables
 import SAuthCodables
 import PerfectLib
 
-func avg(_ i: Int, count: Int) -> Int {
-	guard count != 0 else {
-		return 0
-	}
-	return i / count
-}
-
-func avg(_ i: Double, count: Int) -> Double {
-	guard count != 0 else {
-		return 0
-	}
-	return i / Double(count)
-}
-
 let secondsPerDay = 86400
 
 func shareTokenKey(_ uuid: Foundation.UUID, deviceId: DeviceURN) -> String {
@@ -78,7 +64,7 @@ public enum QBiqError: Error {
 
 public extension QBiqProfile {
 
-  public static func load(id: DeviceURN) throws -> QBiqProfile? {
+	static func load(id: DeviceURN) throws -> QBiqProfile? {
     let db = try biqDatabaseInfo.deviceDb()
     let records: [QBiqProfileRecord] = try db.table(QBiqProfileRecord.self).where(\QBiqProfileRecord.id == id).select().map { $0 }
     let tags = try db.table(QBiqProfileTag.self).where(\QBiqProfileTag.id == id).select().map { $0.tag }
@@ -89,7 +75,7 @@ public extension QBiqProfile {
     }
   }
 
-  public static func setup() throws {
+	static func setup() throws {
     let db = try biqDatabaseInfo.deviceDb()
     try db.sql(
       """
@@ -107,7 +93,7 @@ CREATE TABLE IF NOT EXISTS QBiqProfileTag (
 );
 """)
   }
-  public func save(uid: Foundation.UUID) throws {
+	func save(uid: Foundation.UUID) throws {
     let db = try biqDatabaseInfo.deviceDb()
     guard let _ = try db.table(BiqDevice.self).where(\BiqDevice.id == self.id && \BiqDevice.ownerId == uid).first() else {
       throw QBiqError.reason("invalid owner id")
@@ -125,77 +111,6 @@ CREATE TABLE IF NOT EXISTS QBiqProfileTag (
       }
     }
   }
-}
-
-// returns and obs containing the average for the given intervals
-struct AveragedObsGenerator: IteratorProtocol {
-	typealias Element = ObsDatabase.BiqObservation
-	var currentDate: Double
-	let dateInterval: Double
-	var orderedObs: IndexingIterator<[ObsDatabase.BiqObservation]>
-	var currOb: ObsDatabase.BiqObservation? = nil
-	init(startDate: Double,
-		 dateInterval interval: Double,
-		 orderedObs obs: [ObsDatabase.BiqObservation]) {
-		currentDate = startDate
-		dateInterval = interval
-		orderedObs = obs.makeIterator()
-		currOb = orderedObs.next()
-		while nil != currOb && currOb!.obsTimeSeconds < currentDate {
-			currOb = orderedObs.next()
-		}
-	}
-	mutating func next() -> ObsDatabase.BiqObservation? {
-		guard currOb != nil else {
-			return nil
-		}
-		let deviceId = currOb!.deviceId
-		let firmware = currOb!.firmware
-		let wifiFirmware = currOb!.wifiFirmware ?? ""
-		var theseObs: [ObsDatabase.BiqObservation] = []
-		while currOb!.obsTimeSeconds < currentDate + dateInterval {
-			theseObs.append(currOb!)
-			currOb = orderedObs.next()
-			if nil == currOb {
-				break
-			}
-		}
-		defer {
-			currentDate += dateInterval
-		}
-		
-		let totalCount = theseObs.count
-		var temp = 0.0
-		var battery = 0.0
-		var light = 0,
-			humidity = 0,
-			x = 0, y = 0, z = 0
-		var charging = 0
-		for ob in theseObs {
-			temp += ob.temp
-			battery += ob.battery
-			light += ob.light
-			humidity += ob.humidity
-			let zz = ob.accelz & 0xFFFF
-			if ob.accelx > 0 && (ob.accely != 0 || zz != 0) {
-				x += ob.accelx
-			}
-			charging = ob.charging
-		}
-		return ObsDatabase.BiqObservation(id: 0,
-										  deviceId: deviceId,
-										  obstime: currentDate * 1000, /*GRUMBLE*/
-										  charging: charging,
-										  firmware: firmware,
-										  wifiFirmware: wifiFirmware,
-										  battery: avg(battery, count: totalCount),
-										  temp: avg(temp, count: totalCount),
-										  light: avg(light, count: totalCount),
-										  humidity: avg(humidity, count: totalCount),
-										  accelx: x,
-										  accely: y,
-										  accelz: z)
-	}
 }
 
 func secsToBeginningOfHour(_ secs: Double) -> Double {
@@ -839,7 +754,85 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
     }
     return vobs
   }
-  
+
+	static func obsSummary(earliest: Double, bixid: DeviceURN, unitScale: Int) throws -> [ObsDatabase.BiqObservation] {
+		struct SummaryMutableRecord {
+			public var charging: Int = 1
+			public var battery: Double = 0
+			public var light: Double = 0
+			public var movement: Double = 0
+			public var temperature: Double = 0
+			public var humidity: Double = 0
+		}
+		struct SummaryTemperature: Codable {
+			public let stamp: Int
+			public let temperature: Double
+		}
+		struct SummaryMotion: Codable {
+			public let stamp: Int
+			public let movement: Double
+		}
+		struct SummaryMajor: Codable {
+			public let stamp: Int
+			public let battery: Double
+			public let light: Double
+			public let humidity: Double
+		}
+		let db = try biqDatabaseInfo.obsDb()
+		var sql = """
+		select stamp, avg(temp) as temperature from
+		(select temp, ((obstime - \(earliest) ) / 3600000 / \(unitScale))::Int as stamp
+		from obs
+		where obstime >= \(earliest) and bixid = '\(bixid)' and charging = 0)
+		AS rawdata group by stamp
+		"""
+		let temperatures = try db.sql(sql, bindings: [], SummaryTemperature.self)
+
+		sql = """
+		select stamp, avg(accelx) as movement from
+		(select accelx, accely, accelz,
+		((obstime - \(earliest) ) / 3600000 / \(unitScale))::Int as stamp
+		from obs
+		where obstime >= \(earliest) and bixid = '\(bixid)' and (accely <> 0 or (accelz & 65535) <> 0))
+		AS rawdata group by stamp
+		"""
+
+		let motion = try db.sql(sql, bindings: [], SummaryMotion.self)
+		sql = """
+		select stamp, avg(battery) as battery, avg(light) as light, avg(humidity) as humidity from
+		(select battery, light, humidity,
+		((obstime - \(earliest) ) / 3600000 / \(unitScale))::Int as stamp
+		from obs
+		where obstime >= \(earliest) and bixid = '\(bixid)')
+		AS rawdata group by stamp
+		"""
+		let major = try db.sql(sql, bindings:[], SummaryMajor.self)
+		var records: [Int: SummaryMutableRecord] = [:]
+		major.forEach { records[$0.stamp] = SummaryMutableRecord.init(charging: 1, battery: $0.battery, light: $0.light, movement: 0, temperature: 0, humidity: $0.humidity) }
+		motion.forEach { move in
+			if var h = records[move.stamp] {
+				h.movement = move.movement
+				records[move.stamp] = h
+			}
+		}
+		temperatures.forEach { temp in
+			if var h = records[temp.stamp] {
+				h.temperature = temp.temperature
+				h.charging = 0
+				records[temp.stamp] = h
+			}
+		}
+		let obsRecords: [ObsDatabase.BiqObservation] = records.keys.compactMap {
+			stamp -> ObsDatabase.BiqObservation? in
+			guard let rec = records[stamp] else { return nil }
+			let timestamp = Double(stamp) * 3600000.0 * Double(unitScale) + earliest
+			return ObsDatabase.BiqObservation.init(id: 0, deviceId: bixid, obstime: timestamp, charging: rec.charging, firmware: "", wifiFirmware: "", battery: rec.battery, temp: rec.temperature, light: Int(rec.light), humidity: Int(rec.humidity), accelx: Int(rec.movement), accely: 0, accelz: 0)
+		}
+		return obsRecords.sorted { a, b in
+			return a.obsTimeSeconds < b.obsTimeSeconds
+		}
+	}
+
 	static func deviceObs(session rs: RequestSession) throws -> [ObsDatabase.BiqObservation] {
 		typealias BiqObservation = ObsDatabase.BiqObservation
 		let (request, session) = rs
@@ -895,49 +888,13 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
 			return smooth(obs)
 		case .day: // 2
 			let earliest = secsToBeginningOfDay(now - (oneHour * 24))
-			let obs = try table
-				.order(by: \.obstime)
-				.where(
-					\BiqObservation.deviceId == deviceId &&
-						\BiqObservation.obstime >= (earliest * 1000)).select().map{$0}
-			var averageObs: [ObsDatabase.BiqObservation] = []
-			var gen = AveragedObsGenerator(startDate: earliest,
-										   dateInterval: oneHour,
-										   orderedObs: obs)
-			while let ob = gen.next() {
-				averageObs.append(ob)
-			}
-			return averageObs
+			return try obsSummary(earliest: earliest * 1000, bixid: deviceId, unitScale: 1)
 		case .month: // 3
 			let earliest = secsToBeginningOfDay(now - (oneHour * 24 * 31))
-			let obs = try table
-				.order(by: \.obstime)
-				.where(
-					\BiqObservation.deviceId == deviceId &&
-						\BiqObservation.obstime >= (earliest * 1000)).select().map{$0}
-			var averageObs: [ObsDatabase.BiqObservation] = []
-			var gen = AveragedObsGenerator(startDate: earliest,
-										   dateInterval: oneHour * 24,
-										   orderedObs: obs)
-			while let ob = gen.next() {
-				averageObs.append(ob)
-			}
-			return averageObs
+			return try obsSummary(earliest: earliest * 1000, bixid: deviceId, unitScale: 24)
 		case .year: // 4
 			let earliest = secsToBeginningOfDay(now - (oneHour * 24 * 365))
-			let obs = try table
-				.order(by: \.obstime)
-				.where(
-					\BiqObservation.deviceId == deviceId &&
-						\BiqObservation.obstime >= (earliest * 1000)).select().map{$0}
-			var averageObs: [ObsDatabase.BiqObservation] = []
-			var gen = AveragedObsGenerator(startDate: earliest,
-										   dateInterval: oneHour * 24 * 30,
-										   orderedObs: obs)
-			while let ob = gen.next() {
-				averageObs.append(ob)
-			}
-			return averageObs
+			return try obsSummary(earliest: earliest * 1000, bixid: deviceId, unitScale: 720)
 		}
 	}
 }
