@@ -523,13 +523,39 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
 		let limitsRequest: DeviceAPI.LimitsRequest = try request.decode()
 		let deviceId = limitsRequest.deviceId
 		let db = try biqDatabaseInfo.deviceDb()
-		guard let device = try userHasDeviceAccess(db: db, deviceId: deviceId, userId: session.id) else {
+		guard let device = try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId).first() else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
 		}
 		guard let ownerId = device.ownerId else {
-			throw HTTPResponseError(status: .badRequest, description: "User is not device owner and device has not been shared.")
+			throw HTTPResponseError(status: .badRequest, description: "device has not been assigned to anyone")
 		}
-		let limits = try getLimits(db: db, deviceId: deviceId, ownerId: ownerId, userId: session.id)
+		var limits: [DeviceAPI.DeviceLimit] = []
+		if device.deviceFlags.contains(.locked) {
+			throw HTTPResponseError(status: .badRequest, description: "User is not device owner and device has been locked.")
+		} else {
+			if session.id == ownerId {
+				limits = try getLimits(db: db, deviceId: deviceId, ownerId: ownerId, userId: session.id)
+			} else {
+				limits = try getLimits(db: db, deviceId: deviceId, ownerId: ownerId, userId: ownerId)
+				limits = limits.filter { $0.limitType != .notifications }
+
+				let sql =
+				"""
+				SELECT * FROM \(BiqDeviceLimit.CRUDTableName)
+				WHERE deviceid = $1 AND userid = $2
+				AND limittype = \(BiqDeviceLimitType.notifications.rawValue)
+				"""
+				let notes = try db.sql(sql,
+																		bindings: [("$1", .string(deviceId)), ("$2", .uuid(session.id))],
+																		BiqDeviceLimit.self).compactMap {
+					return DeviceAPI.DeviceLimit(limitType: $0.type,
+																			 limitValue: $0.limitValue,
+																			 limitValueString: $0.limitValueString,
+																			 limitFlag: $0.flag)
+				}
+				limits += notes
+			}
+		}
 		let response = DeviceAPI.DeviceLimitsResponse(deviceId: deviceId,
 													  limits: limits)
 		return response
