@@ -51,6 +51,7 @@ func mainRoutes() -> Routes {
     deviceRoutes.add(method: .get, uri: "/tag", handler: DeviceHandlers.deviceTag)
 		deviceRoutes.add(method: .get, uri: "/type", handler: DeviceHandlers.deviceType)
 		deviceRoutes.add(method: .post, uri: "/bookmark", handler: DeviceHandlers.setBookmark)
+		deviceRoutes.add(method: .get, uri: "/firmware", handler: DeviceHandlers.firmware)
 	}
 	v1.add(deviceRoutes)
 

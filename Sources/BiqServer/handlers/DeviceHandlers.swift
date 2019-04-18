@@ -164,6 +164,11 @@ struct DeviceHandlers {
 		return rs
 	}
 
+	static func firmware(session rs: RequestSession) throws -> [BiqDeviceFirmware] {
+		let db = try biqDatabaseInfo.obsDb()
+		return try db.table(BiqDeviceFirmware.self).select().map { $0 }
+	}
+	
 	static func setBookmark(session rs: RequestSession) throws -> ProfileAPIResponse {
 		guard let body = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid Parameter")
