@@ -375,7 +375,13 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
 				guard let ownerId = device.ownerId else {
 					return []
 				}
-				return try getLimits(db: db1, deviceId: device.id, ownerId: ownerId, userId: userId)
+				if userId == ownerId {
+					return try getLimits(db: db1, deviceId: device.id, ownerId: ownerId, userId: userId)
+				} else {
+					let notes = try getLimits(db: db1, deviceId: device.id, ownerId: ownerId, userId: userId).filter { $0.limitType == .notifications }
+					let lime = try getLimits(db: db1, deviceId: device.id, ownerId: ownerId, userId: ownerId).filter { $0.limitType != .notifications }
+					return lime + notes
+				}
 			}.makeIterator()
 			
 			let ret = zip(devices, obs).map {
