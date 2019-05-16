@@ -18,13 +18,14 @@ func mainRoutes() -> Routes {
 
 	var recipeRoutes = TRoutes(baseUri: "/recipe", handler: RecipeHandlers.identity)
 	do {
-		recipeRoutes.add(method: .post, uri: "/get", handler: RecipeHandlers.recipeGet)
+		recipeRoutes.add(method: .get, uri: "/get", handler: RecipeHandlers.recipeGet)
 		recipeRoutes.add(method: .post, uri: "/set", handler: RecipeHandlers.recipeSet)
 		recipeRoutes.add(method: .post, uri: "/tag/add", handler: RecipeHandlers.recipeTagAdd)
 		recipeRoutes.add(method: .post, uri: "/tag/del", handler: RecipeHandlers.recipeTagRemove)
 		recipeRoutes.add(method: .get,  uri: "/tag/get", handler: RecipeHandlers.recipeTagGet)
-		recipeRoutes.add(method: .post, uri: "/search", handler: RecipeHandlers.search)
+		recipeRoutes.add(method: .get, uri: "/search", handler: RecipeHandlers.search)
 	}
+	v1.add(recipeRoutes)
 	
 	var groupRoutes = TRoutes(baseUri: "/group", handler: GroupHandlers.identity)
 	do {

@@ -14,13 +14,16 @@ import PerfectLib
 
 public struct BiqRange: Codable {
 	public let measurement: String
+	public let unit: String
 	public let low: Double
 	public let high: Double
 	public var enabled: Bool
 	public var index: Int
 
-	public init(measurement m: String, low lo: Double, high hi: Double, enabled en: Bool, index i: Int) {
-		measurement = m; low = lo; high = hi; enabled = en; index = i
+	public init(measurement m: String, unit u: String, low lo: Double, high hi: Double, enabled en: Bool, index i: Int) {
+		low = min(lo, hi)
+		high = max(lo, hi)
+		measurement = m; enabled = en; index = i; unit = u
 	}
 }
 
@@ -29,15 +32,13 @@ public struct BiqRecipe: Codable {
 	public let name: String
 	public let logo: Data
 	public let description: String
-	public var searching: Int
-	public var using: Int
-	public var ranges: Data
 	public var message: String
 	public var tone: Data
 	public var animation: Data
+	public var ranges: Data
 
-	public init(id i: Foundation.UUID, name n: String, logo l: Data, description d: String, searching s: Int, using u: Int, message m: String, ranges r: [BiqRange], tone t: Data, animation a: Data) {
-		id = i; name = n; logo = l; description = d; searching = s; using = u; message = m; tone = t; animation = a;
+	public init(id i: Foundation.UUID, name n: String, logo l: Data, description d: String, message m: String, tone t: Data, animation a: Data, ranges r: [BiqRange]) {
+		id = i; name = n; logo = l; description = d; message = m; tone = t; animation = a;
 		do {
 			ranges = try JSONEncoder().encode(r)
 		} catch {
@@ -54,47 +55,31 @@ public struct BiqRecipeTag: Codable {
 	}
 }
 
-public struct BiqRecipeSearch: Codable {
-	public let limit: Int
-	public let tags: [String]
-	public init(limit l: Int, tags t: [String]) {
-		limit = BiqRecipeSearch.validate(l); tags = t
-	}
-	public static func validate(_ aLimit: Int) -> Int {
-		return aLimit > 9 && aLimit < 1001 ? aLimit: 10
-	}
-}
-
 struct RecipeHandlers {
 	static func identity(session rs: RequestSession) throws -> RequestSession {
 		return rs
 	}
 
-	static func recipeGet(session rs: RequestSession) throws -> [BiqRecipe] {
-		guard let postBody = rs.request.postBodyBytes else {
-			throw HTTPResponseError(status: .badRequest, description: "Null post body.")
+	static func recipeGet(session rs: RequestSession) throws -> BiqRecipe? {
+		guard let id = rs.request.param(name: "id"),
+			let uuid = UUID.init(uuidString: id) else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid recipe id.")
 		}
-		let search = try JSONDecoder().decode(BiqRecipeSearch.self, from: Data(postBody))
-		let whereClause = search.tags.map { "id::text = '\($0)'" }.joined(separator: " OR ")
-		guard !whereClause.isEmpty else { return [] }
-
 		let db = try biqDatabaseInfo.deviceDb()
-		let limit = BiqRecipeSearch.validate(search.limit)
-		return try db.sql("SELECT * FROM BiqRecipe WHERE \(whereClause) LIMIT \(limit)", BiqRecipe.self)
+		let tb = db.table(BiqRecipe.self)
+		return try tb.where(\BiqRecipe.id == uuid).first()
 	}
 
 	static func recipeSet(session rs: RequestSession) throws {
 		guard let postBody = rs.request.postBodyBytes else {
-			throw HTTPResponseError(status: .badRequest, description: "Null post body.")
+			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
 		}
 		let recipe = try JSONDecoder().decode(BiqRecipe.self, from: Data(postBody))
 		let db = try biqDatabaseInfo.deviceDb()
 		let tb = db.table(BiqRecipe.self)
+		// !FIXIT! when upsert (INSERT ON CONFLICT) available
 		if try tb.where(\BiqRecipe.id == recipe.id).count() > 0 {
-			try db.transaction {
-				try tb.where(\BiqRecipe.id == recipe.id).delete()
-				try tb.insert(recipe)
-			}
+			try tb.update(recipe);
 		} else {
 			try tb.insert(recipe)
 		}
@@ -102,53 +87,67 @@ struct RecipeHandlers {
 
 	static func recipeTagAdd(session rs: RequestSession) throws {
 		guard let postBody = rs.request.postBodyBytes else {
-			throw HTTPResponseError(status: .badRequest, description: "Null post body.")
+			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
 		}
-		let tag = try JSONDecoder().decode(BiqRecipeTag.self, from: Data(postBody))
+		let tags = try JSONDecoder().decode([BiqRecipeTag].self, from: Data(postBody))
 		let db = try biqDatabaseInfo.deviceDb()
 		let tb = db.table(BiqRecipeTag.self)
-		try tb.insert(tag)
+		_ = tags.forEach { _ = try? tb.insert($0) }
 	}
 
 	static func recipeTagRemove(session rs: RequestSession) throws {
 		guard let postBody = rs.request.postBodyBytes else {
-			throw HTTPResponseError(status: .badRequest, description: "Null post body.")
+			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
 		}
-		let tag = try JSONDecoder().decode(BiqRecipeTag.self, from: Data(postBody))
+		let tags = try JSONDecoder().decode([BiqRecipeTag].self, from: Data(postBody))
 		let db = try biqDatabaseInfo.deviceDb()
-		try db.table(BiqRecipeTag.self).where(\BiqRecipeTag.recipe == tag.recipe && \BiqRecipeTag.tag == tag.tag).delete()
+		let tb = db.table(BiqRecipeTag.self)
+		_ = tags.forEach { _ = try? tb.where(\BiqRecipeTag.recipe == $0.recipe && \BiqRecipeTag.tag == $0.tag).delete() }
 	}
 
-	static func recipeTagGet(session rs: RequestSession) throws -> [String] {
-		guard let id = rs.request.param(name: "id") else {
-			throw HTTPResponseError(status: .badRequest, description: "Invalid recipe id.")
-		}
-		guard let uuid = UUID.init(uuidString: id) else {
-			throw HTTPResponseError(status: .badRequest, description: "Invalid recipe uuid.")
-		}
+	static func parseLimit(session rs: RequestSession) -> Int {
 		let limit: Int
 		if let limitation = rs.request.param(name: "limit"), let aLimit = Int(limitation) {
-			limit = BiqRecipeSearch.validate(aLimit)
+			limit = aLimit >= 0 && aLimit < 101 ? aLimit : 100
 		} else {
 			limit = 100
 		}
+		return limit
+	}
+
+	static func recipeTagGet(session rs: RequestSession) throws -> [String] {
+		guard let id = rs.request.param(name: "id"), let uuid = UUID.init(uuidString: id) else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid recipe id.")
+		}
+		let limit = parseLimit(session: rs)
 		let db = try biqDatabaseInfo.deviceDb()
 		let tb = try db.table(BiqRecipeTag.self).limit(limit, skip: 0).where(\BiqRecipeTag.recipe == uuid).select()
 		return tb.map { $0.tag }
 	}
 	
-	static func search(session rs: RequestSession) throws -> [String] {
-		let search: BiqRecipeSearch
-		if let postBody = rs.request.postBodyBytes {
-			search = try JSONDecoder().decode(BiqRecipeSearch.self, from: Data(postBody))
-		} else {
-			search = BiqRecipeSearch(limit: 10, tags: [])
+	static func search(session rs: RequestSession) throws -> [BiqRecipe] {
+		guard let keywords = rs.request.param(name: "keywords") else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid keywords")
 		}
-		let limit = search.limit > 9 && search.limit < 1001 ? search.limit : 10
+		let blank = CharacterSet.init(charactersIn: " \t\r\n")
+		let keys = keywords.split(separator: " ").compactMap { String($0).trimmingCharacters(in: blank ) }
+		guard !keys.isEmpty else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid keywords")
+		}
+		let limit = parseLimit(session: rs)
+		let nameLike = keys.map { "name like '%\($0)%'"}.joined(separator: " OR ")
+		let descLike = keys.map { "description like '%\($0)%'"}.joined(separator: " OR ")
+		let tagsLike = keys.map { "tag like '%\($0)%'"}.joined(separator: " OR ")
+		let sql = """
+		SELECT * FROM BiqRecipe
+		WHERE \(nameLike) OR \(descLike)
+		OR id IN (SELECT DISTINCT recipe FROM BiqRecipeTag WHERE \(tagsLike))
+		LIMIT \(limit)
+		"""
+
+		print(sql)
 		let db = try biqDatabaseInfo.deviceDb()
-		let likes = search.tags.map { "tag like '%\($0)%'" }.joined(separator: " OR ")
-		let whereClause = likes.isEmpty ? "" : "WHERE \(likes)"
-		let sql = "SELECT DISTINCT recipe::text FROM BiqRecipeTag \(whereClause) LIMIT \(limit)"
-		return try db.sql(sql, String.self)
+
+		return try db.sql(sql, BiqRecipe.self)
 	}
 }
