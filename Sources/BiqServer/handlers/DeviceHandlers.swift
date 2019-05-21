@@ -10,109 +10,105 @@ import PerfectHTTP
 import PerfectCRUD
 import SwiftCodables
 import SAuthCodables
-
-func avg(_ i: Int, count: Int) -> Int {
-	guard count != 0 else {
-		return 0
-	}
-	return i / count
-}
-
-func avg(_ i: Double, count: Int) -> Double {
-	guard count != 0 else {
-		return 0
-	}
-	return i / Double(count)
-}
+import PerfectLib
 
 let secondsPerDay = 86400
 
-func shareTokenKey(_ uuid: UUID, deviceId: DeviceURN) -> String {
+func shareTokenKey(_ uuid: Foundation.UUID, deviceId: DeviceURN) -> String {
 	return "share-token:\(uuid):\(deviceId)"
 }
 
-//func totalAccel(x: Int, y: Int, z: Int) -> Double {
-//	let xd = Double(x) / 10.0
-//	let yd = Double(y) / 10.0
-//	let zd = Double(z) / 10.0
-//	return sqrt(xd*xd + yd*yd + zd*zd)
-//}
-//sqrt( x^2+y^2+z^2)
+public extension BiqProfile {
 
-// returns and obs containing the average for the given intervals
-struct AveragedObsGenerator: IteratorProtocol {
-	typealias Element = ObsDatabase.BiqObservation
-	var currentDate: Double
-	let dateInterval: Double
-	var orderedObs: IndexingIterator<[ObsDatabase.BiqObservation]>
-	var currOb: ObsDatabase.BiqObservation? = nil
-	init(startDate: Double,
-		 dateInterval interval: Double,
-		 orderedObs obs: [ObsDatabase.BiqObservation]) {
-		currentDate = startDate
-		dateInterval = interval
-		orderedObs = obs.makeIterator()
-		currOb = orderedObs.next()
-		while nil != currOb && currOb!.obsTimeSeconds < currentDate {
-			currOb = orderedObs.next()
+	enum CodingKeys: String, CodingKey {
+		case id
+		case description
+		// computed property
+		case tags
+		case name
+	}
+
+	var tags: [String] {
+		get {
+			do {
+				let db = try biqDatabaseInfo.deviceDb()
+				let table = db.table(BiqProfileTag.self)
+				return try table.where(\BiqProfileTag.id == self.id).select().map { $0.tag }
+			} catch (let err) {
+				CRUDLogging.log(.error, "unable to locate device database: \(err)")
+				return []
+			}
+		}
+		set {
+			do {
+				let db = try biqDatabaseInfo.deviceDb()
+				let table = db.table(BiqProfileTag.self)
+				try db.transaction {
+					try table.where(\BiqProfileTag.id == self.id).delete()
+					for tag in newValue {
+						try table.insert(BiqProfileTag(id: self.id, tag: tag))
+					}
+				}
+			} catch (let err) {
+				CRUDLogging.log(.error, "unable to reset tags: \(err)")
+				return
+			}
 		}
 	}
-	mutating func next() -> ObsDatabase.BiqObservation? {
-		guard currOb != nil else {
+
+	var name: String {
+		do {
+			let db = try biqDatabaseInfo.deviceDb()
+			let table = db.table(BiqDevice.self)
+			guard let device = try table.where(\BiqDevice.id == self.id).first() else { return "" }
+			return device.name
+		} catch (let err) {
+			CRUDLogging.log(.error, "unable to get name: \(err)")
+			return ""
+		}
+	}
+
+	init(from decoder: Decoder) throws {
+		let values = try decoder.container(keyedBy: CodingKeys.self)
+		let _id = try values.decode(DeviceURN.self, forKey: .id)
+		let _description = try values.decode(String.self, forKey: .description)
+		self = BiqProfile(id: _id, description: _description)
+		do {
+			tags = try values.decode([String].self, forKey: .tags)
+		} catch {
+			// ignore computated property decoding errors since it could be blank
+		}
+	}
+
+	func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(id, forKey: .id)
+		try container.encode(description, forKey: .description)
+		try container.encode(tags, forKey: .tags)
+		try container.encode(name, forKey: .name)
+	}
+
+	static func load(id: DeviceURN) throws -> BiqProfile? {
+    let db = try biqDatabaseInfo.deviceDb()
+		guard let profile = (try db.table(BiqProfile.self).where(\BiqProfile.id == id).first()) else {
 			return nil
 		}
-		let deviceId = currOb!.deviceId
-		let firmware = currOb!.firmware
-		let wifiFirmware = currOb!.wifiFirmware ?? ""
-		var theseObs: [ObsDatabase.BiqObservation] = []
-		while currOb!.obsTimeSeconds < currentDate + dateInterval {
-			theseObs.append(currOb!)
-			currOb = orderedObs.next()
-			if nil == currOb {
-				break
-			}
+		_ = profile.tags
+		return profile
+  }
+
+	func save(uid: Foundation.UUID) throws {
+    let db = try biqDatabaseInfo.deviceDb()
+    guard let _ = try db.table(BiqDevice.self).where(\BiqDevice.id == self.id && \BiqDevice.ownerId == uid).first() else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid owner.")
+    }
+		let table = db.table(BiqProfile.self)
+		if try table.where(\BiqProfile.id == self.id).count() > 0 {
+			try table.update(self)
+		} else {
+			try table.insert(self)
 		}
-		defer {
-			currentDate += dateInterval
-		}
-		
-		let totalCount = theseObs.count
-		var temp = 0.0
-		var battery = 0.0
-		var light = 0,
-			humidity = 0,
-			x = 0, y = 0, z = 0
-		var charging = 0
-		for ob in theseObs {
-			temp += ob.temp
-			battery += ob.battery
-			light += ob.light
-			humidity += ob.humidity
-			if ob.accelx != 0 {
-				x += 1
-			}
-			if ob.accely != 0 {
-				y += 1
-			}
-			if ob.accelz != 0 {
-				z += 1
-			}
-			charging = ob.charging
-		}
-		return ObsDatabase.BiqObservation(id: 0,
-										  deviceId: deviceId,
-										  obstime: currentDate * 1000, /*GRUMBLE*/
-										  charging: charging,
-										  firmware: firmware,
-										  wifiFirmware: wifiFirmware,
-										  battery: avg(battery, count: totalCount),
-										  temp: avg(temp, count: totalCount),
-										  light: avg(light, count: totalCount),
-										  humidity: avg(humidity, count: totalCount),
-										  accelx: x,
-										  accely: y,
-										  accelz: z)
-	}
+  }
 }
 
 func secsToBeginningOfHour(_ secs: Double) -> Double {
@@ -129,9 +125,6 @@ func secsToBeginningOfDay(_ secs: Double) -> Double {
 	return trueThenSecs
 }
 
-// this is in place for demo purposes
-// if the user has no biqs then share these with them
-let fakeShareIds = ["UBIQTF1111", "UBIQTF2222", "UBIQTF3333", "UBIQTF4444"]
 let defaultReportInterval = Float(3600.0)
 let defaultLimits: [DeviceAPI.DeviceLimit] = [
 	.init(limitType: .tempHigh, limitValue: 28.0, limitFlag: .none),
@@ -155,7 +148,135 @@ struct DeviceHandlers {
 	static func identity(session rs: RequestSession) throws -> RequestSession {
 		return rs
 	}
+
+	static func firmware(session rs: RequestSession) throws -> [BiqDeviceFirmware] {
+		let db = try biqDatabaseInfo.obsDb()
+		return try db.table(BiqDeviceFirmware.self).select().map { $0 }
+	}
 	
+	static func setBookmark(session rs: RequestSession) throws -> ProfileAPIResponse {
+		guard let body = rs.request.postBodyBytes else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid Parameter")
+		}
+		let data = Data.init(bytes: body)
+		let bookmark = try JSONDecoder.init().decode(BiqBookmark.self, from: data)
+		let db = try biqDatabaseInfo.deviceDb()
+		guard let _ = try db.table(BiqDevice.self).where(\BiqDevice.id == bookmark.id && \BiqDevice.ownerId == rs.session.id).first() else {
+			throw HTTPResponseError(status: .badRequest, description: "Unregistered device or invalid ownership")
+		}
+		let table = db.table(BiqBookmark.self)
+		try db.transaction {
+			try table.where(\BiqBookmark.id == bookmark.id).delete()
+			try table.insert(bookmark)
+		}
+		return ProfileAPIResponse(content: "ok")
+	}
+
+	static func deviceType(session rs: RequestSession) throws -> ProfileAPIResponse {
+		var p = ProfileAPIResponse()
+		guard let bixid = rs.request.param(name: "id"),
+			let move = rs.request.param(name: "move"),
+			let movementEnabled = Int(move) else {
+				p.content = "Invalid Parameters"
+				return p
+		}
+		let db = try biqDatabaseInfo.deviceDb()
+		guard let _ = try db.table(BiqDevice.self).where(\BiqDevice.id == bixid && \BiqDevice.ownerId == rs.session.id).first() else {
+			p.content = "Unregistered device or unauthorized operation"
+			return p
+		}
+		let flag = movementEnabled > 0 ? 2 : 4
+		try db.sql("UPDATE BiqDevice SET flags = \(flag) WHERE id = '\(bixid)'")
+		p.content = "\(flag)"
+		return p
+	}
+	
+  static func deviceTag(session rs: RequestSession) throws -> [BiqProfile] {
+    guard let pattern = rs.request.param(name: "with") else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
+    }
+		let keys = pattern.split(separator: " ").compactMap { String($0).trimmingCharacters(in: CharacterSet(charactersIn: " \t\r\n") ) }
+		guard !keys.isEmpty else { return  [] }
+		let likes = keys.map { "tag LIKE '%\($0)%'" }.joined(separator: " OR ")
+		let sql = "SELECT * FROM BiqDevice WHERE \(likes)";
+    let db = try biqDatabaseInfo.deviceDb()
+    return try db.sql(sql, BiqProfile.self)
+  }
+
+  static func deviceFollowers(session rs: RequestSession) throws -> [String] {
+    let db = try biqDatabaseInfo.deviceDb()
+    if let deviceId = rs.request.postBodyString {
+      let guests = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.deviceId == deviceId).select()
+      return guests.map { $0.userId.uuidString.lowercased() }
+    } else {
+      let oid = rs.session.id.uuidString.lowercased()
+      return try db.sql("SELECT DISTINCT userid FROM biqdeviceaccesspermission WHERE deviceid IN (SELECT id FROM biqdevice WHERE ownerid = $1)",
+                        bindings: [("$1", .string(oid))], String.self)
+    }
+  }
+
+  static func deviceUpdateLocation(session rs: RequestSession) throws -> ProfileAPIResponse {
+    guard let postbody = rs.request.postBodyBytes else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
+    }
+    let postdata = Data.init(bytes: postbody)
+    let profile = try JSONDecoder.init().decode(BiqLocation.self, from: postdata)
+    let db = try biqDatabaseInfo.deviceDb()
+
+    try db.sql("UPDATE biqdevice SET longitude = $1, latitude = $2 WHERE id = $3 AND ownerid = $4", bindings: [
+      ("$1", .decimal(profile.x)), ("$2", .decimal(profile.y)),
+      ("$3", .string(profile.id)), ("$4", .string(rs.session.id.uuidString.lowercased()))
+      ])
+    return ProfileAPIResponse.init(content: "updated")
+  }
+  
+  static func deviceProfileUpdate(session rs: RequestSession) throws -> ProfileAPIResponse {
+    guard let postbody = rs.request.postBodyBytes else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
+    }
+    let postdata = Data.init(bytes: postbody)
+    let profile = try JSONDecoder.init().decode(BiqProfile.self, from: postdata)
+    try profile.save(uid: rs.session.id)
+    return ProfileAPIResponse.init(content: "updated")
+  }
+
+  static func deviceProfileGet(session rs: RequestSession) throws -> BiqProfile {
+    guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
+    }
+    guard let prof = try BiqProfile.load(id: uid) else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
+    }
+    return prof
+  }
+
+  static func deviceSearch(session rs: RequestSession) throws -> [BiqDevice] {
+    guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
+    }
+    let db = try biqDatabaseInfo.deviceDb()
+		return try db.table(BiqDevice.self).limit(5, skip: 0)
+			.where(\BiqDevice.id %=% uid || \BiqDevice.name %=% uid).select().map { $0 }
+  }
+
+  static func deviceStat(session rs: RequestSession) throws -> BiqStat {
+    guard let id = rs.request.param(name: "uid"),
+      let uid = UUID.init(uuidString: id)  else {
+      return BiqStat(owned: -1, followed: -1, following: -1)
+    }
+    let db = try biqDatabaseInfo.deviceDb()
+    let owned = try db.table(BiqDevice.self).where(\BiqDevice.ownerId == uid).select().map { $0.id }
+    let followed: [String]
+    if owned.isEmpty {
+      followed = []
+    } else {
+      followed = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.deviceId ~ owned).select().map { $0.userId.uuidString.lowercased() }
+    }
+    let uniqFollowed = Set<String>(followed)
+    let following = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.userId == uid).count()
+    return BiqStat(owned: owned.count, followed: uniqFollowed.count, following: following)
+  }
+
 	private static func getLimits<C: DatabaseConfigurationProtocol>(
 								  db: Database<C>,
 								  deviceId: DeviceURN,
@@ -225,21 +346,17 @@ struct DeviceHandlers {
 				guard let ownerId = device.ownerId else {
 					return []
 				}
-				return try getLimits(db: db1, deviceId: device.id, ownerId: ownerId, userId: userId)
+				if userId == ownerId {
+					return try getLimits(db: db1, deviceId: device.id, ownerId: ownerId, userId: userId)
+				} else {
+					let notes = try getLimits(db: db1, deviceId: device.id, ownerId: ownerId, userId: userId).filter { $0.limitType == .notifications }
+					let lime = try getLimits(db: db1, deviceId: device.id, ownerId: ownerId, userId: ownerId).filter { $0.limitType != .notifications }
+					return lime + notes
+				}
 			}.makeIterator()
 			
 			let ret = zip(devices, obs).map {
 				DeviceAPI.ListDevicesResponseItem(device: $0.0, shareCount: shares.next() ?? 0, lastObservation: $0.1, limits: limits.next() ?? [])
-			}
-			// this is in place for demo purposes
-			if ret.count == 0 {
-				try db1.transaction {
-					for id in fakeShareIds {
-						let share = BiqDeviceAccessPermission(userId: userId, deviceId: id)
-						try shareTable.insert(share)
-					}
-				}
-				return try deviceList(session: rs)
 			}
 			return ret
 		}
@@ -388,7 +505,11 @@ struct DeviceHandlers {
 		guard try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId && \BiqDevice.ownerId == session.id).count() == 1 else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
 		}
-		let shareToken = UUID()
+    guard let device = try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId).first(), !device.deviceFlags.contains(.locked) else {
+      throw HTTPResponseError(status: .forbidden, description: "Device is locked.")
+    }
+
+		let shareToken = Foundation.UUID()
 		let key = shareTokenKey(shareToken, deviceId: deviceId)
 		let client = try biqRedisInfo.client()
 		let response = try client.set(key: key, value: .string("1"), expires: Double(deviceShareTokenExpirationDays * secondsPerDay), ifNotExists: true)
@@ -415,13 +536,39 @@ struct DeviceHandlers {
 		let limitsRequest: DeviceAPI.LimitsRequest = try request.decode()
 		let deviceId = limitsRequest.deviceId
 		let db = try biqDatabaseInfo.deviceDb()
-		guard let device = try userHasDeviceAccess(db: db, deviceId: deviceId, userId: session.id) else {
+		guard let device = try db.table(BiqDevice.self).where(\BiqDevice.id == deviceId).first() else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
 		}
 		guard let ownerId = device.ownerId else {
-			throw HTTPResponseError(status: .badRequest, description: "User is not device owner and device has not been shared.")
+			throw HTTPResponseError(status: .badRequest, description: "device has not been assigned to anyone")
 		}
-		let limits = try getLimits(db: db, deviceId: deviceId, ownerId: ownerId, userId: session.id)
+		var limits: [DeviceAPI.DeviceLimit] = []
+		if device.deviceFlags.contains(.locked) {
+			throw HTTPResponseError(status: .badRequest, description: "User is not device owner and device has been locked.")
+		} else {
+			if session.id == ownerId {
+				limits = try getLimits(db: db, deviceId: deviceId, ownerId: ownerId, userId: session.id)
+			} else {
+				limits = try getLimits(db: db, deviceId: deviceId, ownerId: ownerId, userId: ownerId)
+				limits = limits.filter { $0.limitType != .notifications }
+
+				let sql =
+				"""
+				SELECT * FROM \(BiqDeviceLimit.CRUDTableName)
+				WHERE deviceid = $1 AND userid = $2
+				AND limittype = \(BiqDeviceLimitType.notifications.rawValue)
+				"""
+				let notes = try db.sql(sql,
+																		bindings: [("$1", .string(deviceId)), ("$2", .uuid(session.id))],
+																		BiqDeviceLimit.self).compactMap {
+					return DeviceAPI.DeviceLimit(limitType: $0.type,
+																			 limitValue: $0.limitValue,
+																			 limitValueString: $0.limitValueString,
+																			 limitFlag: $0.flag)
+				}
+				limits += notes
+			}
+		}
 		let response = DeviceAPI.DeviceLimitsResponse(deviceId: deviceId,
 													  limits: limits)
 		return response
@@ -506,7 +653,7 @@ struct DeviceHandlers {
 							pushLimits.append(model)
 						}
 					case BiqDeviceLimitType.movementLevel.rawValue:
-						let model = BiqDevicePushLimit(deviceId: deviceId, limitType: limit.limitType, limitValue: limit.limitValue ?? 0.0, limitValueString: nil)
+            let model = BiqDevicePushLimit(deviceId: deviceId, limitType: limit.limitType, limitValue: 0, limitValueString: limit.limitValueString)
 						pushLimits.append(model)
 					case BiqDeviceLimitType.batteryLevel.rawValue:
 						()
@@ -525,13 +672,24 @@ struct DeviceHandlers {
 															 limitValue: limit.limitValue ?? 300,
 															 limitValueString: limit.limitValueString))
 					case BiqDeviceLimitType.reportFormat.rawValue:
-						()
+            let v = limit.limitValue ?? 0
+            pushLimits.append(BiqDevicePushLimit(deviceId: deviceId,
+                               limitType: limit.limitType,
+                               limitValue: v > 1 ? 2.0 : 0.0,
+                               limitValueString: ""))
 					case BiqDeviceLimitType.reportBufferCapacity.rawValue:
-						()
-					case BiqDeviceLimitType.lightLevel.rawValue:
-						()
-					case BiqDeviceLimitType.humidityLevel.rawValue:
-						()
+            var v = UInt8(limit.limitValue ?? 2)
+            if v < 1 || v > 50 {
+              v = 50
+            }
+            pushLimits.append(BiqDevicePushLimit(deviceId: deviceId,
+                               limitType: limit.limitType,
+                               limitValue: Float(v),
+                               limitValueString: ""))
+					case BiqDeviceLimitType.lightLevel.rawValue, BiqDeviceLimitType.humidityLevel.rawValue:
+						// 0x6400 = upper(100) << 8 + lower(0)
+						let v = limit.limitValue ?? Float(0x6400)
+						pushLimits.append(BiqDevicePushLimit(deviceId: deviceId, limitType: limit.limitType, limitValue: v, limitValueString: nil))
 					default:
 						()
 					}
@@ -607,7 +765,113 @@ struct DeviceHandlers {
 		try table.where(\BiqObservation.deviceId == deviceId).delete()		
 		return EmptyReply()
 	}
-	
+
+  static func smooth(_ obs: [ObsDatabase.BiqObservation]) -> [ObsDatabase.BiqObservation]
+  {
+    guard obs.count > 2 else { return obs }
+    var vobs = obs
+    var i = 1
+    while i < obs.count - 1 {
+      let left = obs[i - 1]
+      let mid = obs[i]
+      let right = obs[i + 1]
+      let avg = abs(left.temp - right.temp)
+      let small = min(left.temp, right.temp)
+      let big = mid .temp - small
+      guard big > 0 else {
+        i += 1
+        continue
+      }
+      let rate = big / avg
+      if rate > 2 {
+        let j = obs[i]
+        vobs[i] = ObsDatabase.BiqObservation.init(id: j.id, deviceId: j.deviceId, obstime: j.obstime, charging: j.charging, firmware: j.firmware, wifiFirmware: j.wifiFirmware ?? "", battery: j.battery, temp: small, light: j.light, humidity: j.humidity, accelx: j.accelx, accely: j.accely, accelz: j.accelz)
+        i += 2
+      } else {
+        i += 1
+      }
+    }
+    return vobs
+  }
+
+	static func obsSummary(earliest: Double, bixid: DeviceURN, unitScale: Int) throws -> [ObsDatabase.BiqObservation] {
+		struct SummaryMutableRecord {
+			public var charging: Int = 1
+			public var battery: Double = 0
+			public var light: Double = 0
+			public var movement: Double = 0
+			public var temperature: Double = 0
+			public var humidity: Double = 0
+		}
+		struct SummaryTemperature: Codable {
+			public let stamp: Int
+			public let temperature: Double
+		}
+		struct SummaryMotion: Codable {
+			public let stamp: Int
+			public let movement: Double
+		}
+		struct SummaryMajor: Codable {
+			public let stamp: Int
+			public let battery: Double
+			public let light: Double
+			public let humidity: Double
+		}
+		let db = try biqDatabaseInfo.obsDb()
+		var sql = """
+		select stamp, avg(temp) as temperature from
+		(select temp, ((obstime - \(earliest) ) / 3600000 / \(unitScale))::Int as stamp
+		from obs
+		where obstime >= \(earliest) and bixid = '\(bixid)' and charging = 0)
+		AS rawdata group by stamp
+		"""
+		let temperatures = try db.sql(sql, bindings: [], SummaryTemperature.self)
+
+		sql = """
+		select stamp, avg(accelx) as movement from
+		(select accelx, accely, accelz,
+		((obstime - \(earliest) ) / 3600000 / \(unitScale))::Int as stamp
+		from obs
+		where obstime >= \(earliest) and bixid = '\(bixid)' and (accely <> 0 or (accelz & 65535) <> 0))
+		AS rawdata group by stamp
+		"""
+
+		let motion = try db.sql(sql, bindings: [], SummaryMotion.self)
+		sql = """
+		select stamp, avg(battery) as battery, avg(light) as light, avg(humidity) as humidity from
+		(select battery, light, humidity,
+		((obstime - \(earliest) ) / 3600000 / \(unitScale))::Int as stamp
+		from obs
+		where obstime >= \(earliest) and bixid = '\(bixid)')
+		AS rawdata group by stamp
+		"""
+		let major = try db.sql(sql, bindings:[], SummaryMajor.self)
+		var records: [Int: SummaryMutableRecord] = [:]
+		major.forEach { records[$0.stamp] = SummaryMutableRecord.init(charging: 1, battery: $0.battery, light: $0.light, movement: 0, temperature: 0, humidity: $0.humidity) }
+		motion.forEach { move in
+			if var h = records[move.stamp] {
+				h.movement = move.movement
+				records[move.stamp] = h
+			}
+		}
+		temperatures.forEach { temp in
+			if var h = records[temp.stamp] {
+				h.temperature = temp.temperature
+				h.charging = 0
+				records[temp.stamp] = h
+			}
+		}
+		let obsRecords: [ObsDatabase.BiqObservation] = records.keys.compactMap {
+			stamp -> ObsDatabase.BiqObservation? in
+			guard let rec = records[stamp] else { return nil }
+			let timestamp = Double(stamp) * 3600000.0 * Double(unitScale) + earliest
+			return ObsDatabase.BiqObservation.init(id: 0, deviceId: bixid, obstime: timestamp, charging: rec.charging, firmware: "", wifiFirmware: "", battery: rec.battery, temp: rec.temperature, light: Int(rec.light), humidity: Int(rec.humidity), accelx: Int(rec.movement), accely: 0, accelz: 0)
+		}
+		return obsRecords.sorted { a, b in
+			return a.obsTimeSeconds < b.obsTimeSeconds
+		}
+	}
+
 	static func deviceObs(session rs: RequestSession) throws -> [ObsDatabase.BiqObservation] {
 		typealias BiqObservation = ObsDatabase.BiqObservation
 		let (request, session) = rs
@@ -616,7 +880,17 @@ struct DeviceHandlers {
 		guard let interval = DeviceAPI.ObsRequest.Interval(rawValue: obsRequest.interval) else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid interval.")
 		}
-		
+    let dbDev = try biqDatabaseInfo.deviceDb()
+    let deviceTable = dbDev.table(BiqDevice.self)
+
+    guard let currentDevice = try deviceTable.where(\BiqDevice.id == deviceId).first() else {
+      throw HTTPResponseError(status: .badRequest, description: "Invalid device.")
+    }
+    if currentDevice.ownerId != session.id, let flags = currentDevice.flags {
+      if flags & BiqDeviceFlag.locked.rawValue != 0 {
+        throw HTTPResponseError(status: .forbidden, description: "Device has been locked by owner.")
+      }
+    }
 		do { // screen for access
 			let userId = session.id
 			let db = Database(configuration: try biqDatabaseInfo.databaseConfiguration())
@@ -631,70 +905,54 @@ struct DeviceHandlers {
 				throw HTTPResponseError(status: .badRequest, description: "User is not device owner and device has not been shared.")
 			}
 		}
+
 		
+		let bookmarkTable = dbDev.table(BiqBookmark.self)
+		var history = Double(0)
+		if let bookmark = try bookmarkTable.where(\BiqBookmark.id == deviceId).first() {
+			history = bookmark.timestamp
+		}
 		let db = try biqDatabaseInfo.obsDb()
 		let table = db.table(BiqObservation.self)
 		let now = Date().timeIntervalSince1970
 		let oneHour = 60.0 * 60.0
+		var earliest = Double(0)
 		switch interval {
 		case .all: // 0
 			return try table
 				.order(by: \.obstime)
-					.where(\BiqObservation.deviceId == deviceId).select().map{$0}
+				.where(\BiqObservation.deviceId == deviceId).select().map{$0}.filter { $0.obstime > history }
 		case .live: // 1 - last 8 hours
 			// move time back to beginning of hour, 8 hours ago
-			let earliest = secsToBeginningOfHour(now - (oneHour * 8))
+			earliest = secsToBeginningOfHour(now - (oneHour * 8)) * 1000.0
+			print(earliest, history, earliest - history)
+			if history > earliest {
+				earliest = history
+			}
 			let obs = try table
 				.order(by: \.obstime)
 				.where(
 					\BiqObservation.deviceId == deviceId &&
-						\BiqObservation.obstime >= (earliest * 1000)).select().map{$0}
-			return obs
+						\BiqObservation.obstime >= earliest).select().map{$0}
+			return smooth(obs)
 		case .day: // 2
-			let earliest = secsToBeginningOfDay(now - (oneHour * 24))
-			let obs = try table
-				.order(by: \.obstime)
-				.where(
-					\BiqObservation.deviceId == deviceId &&
-						\BiqObservation.obstime >= (earliest * 1000)).select().map{$0}
-			var averageObs: [ObsDatabase.BiqObservation] = []
-			var gen = AveragedObsGenerator(startDate: earliest,
-										   dateInterval: oneHour,
-										   orderedObs: obs)
-			while let ob = gen.next() {
-				averageObs.append(ob)
+			earliest = secsToBeginningOfDay(now - (oneHour * 24)) * 1000.0
+			if history > earliest {
+				earliest = history
 			}
-			return averageObs
+			return try obsSummary(earliest: earliest, bixid: deviceId, unitScale: 1)
 		case .month: // 3
-			let earliest = secsToBeginningOfDay(now - (oneHour * 24 * 31))
-			let obs = try table
-				.order(by: \.obstime)
-				.where(
-					\BiqObservation.deviceId == deviceId &&
-						\BiqObservation.obstime >= (earliest * 1000)).select().map{$0}
-			var averageObs: [ObsDatabase.BiqObservation] = []
-			var gen = AveragedObsGenerator(startDate: earliest,
-										   dateInterval: oneHour * 24,
-										   orderedObs: obs)
-			while let ob = gen.next() {
-				averageObs.append(ob)
+			earliest = secsToBeginningOfDay(now - (oneHour * 24 * 31))
+			if history > earliest {
+				earliest = history
 			}
-			return averageObs
+			return try obsSummary(earliest: earliest, bixid: deviceId, unitScale: 24)
 		case .year: // 4
-			let earliest = secsToBeginningOfDay(now - (oneHour * 24 * 365))
-			let obs = try table
-				.order(by: \.obstime)
-				.where(
-					\BiqObservation.deviceId == deviceId &&
-						\BiqObservation.obstime >= (earliest * 1000)).select().map{$0}
-			var averageObs: [ObsDatabase.BiqObservation] = []
-			var gen = AveragedObsGenerator(startDate: earliest,
-										   dateInterval: oneHour * 24 * 30,
-										   orderedObs: obs)
-			while let ob = gen.next() {
-				averageObs.append(ob)
+			earliest = secsToBeginningOfDay(now - (oneHour * 24 * 365)) * 1000.0
+			if history > earliest {
+				earliest = history
 			}
-			return averageObs
+			return try obsSummary(earliest: earliest, bixid: deviceId, unitScale: 720)
 		}
 	}
 }
