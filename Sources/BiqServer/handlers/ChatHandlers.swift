@@ -9,29 +9,7 @@ import SwiftCodables
 import SAuthCodables
 import PerfectNotifications
 import PerfectThread
-
-public struct ChatLogCreation: Codable {
-  public let topic: String
-  public let content: String
-}
-
-public struct ChatLogRecord: Codable {
-  public let id: Int64
-  public let utc: String
-  public let topic: String
-  public let poster: String
-  public let content: String
-}
-
-public enum ChatException: Error {
-  case invalidLogin
-  case invalidDevice
-}
-
-public struct Recipient: Codable {
-  public let email: String
-  public let device: String
-}
+import PerfectHTTP
 
 public struct ChatHandlers {
 
@@ -39,25 +17,10 @@ public struct ChatHandlers {
     return rs
   }
 
-  static func initialize() throws {
-    let adb = try biqDatabaseInfo.authDb()
-    try adb.sql(
-"""
-CREATE TABLE IF NOT EXISTS chatlog(
-  id BIGSERIAL PRIMARY KEY,
-  utc TIMESTAMP NOT NULL DEFAULT NOW(),
-  topic VARCHAR(64) NOT NULL,
-  poster VARCHAR(64) NOT NULL,
-  content VARCHAR(256) NOT NULL,
-  UNIQUE(utc, topic, poster)
-);
-""")
-  }
-
   static func save(session rs: RequestSession) throws -> Void {
     let adb = try biqDatabaseInfo.authDb()
     guard let account = (try adb.table(Account.self).where(\Account.id == rs.session.id).first()) else {
-      throw ChatException.invalidLogin
+      throw HTTPResponseError(status: .badRequest, description: "Invalid login.")
     }
     let uid = rs.session.id.uuidString.lowercased()
     let data = Data.init(bytes: rs.request.postBodyBytes ?? [])
@@ -65,7 +28,7 @@ CREATE TABLE IF NOT EXISTS chatlog(
 
     let db = try biqDatabaseInfo.deviceDb()
     guard let device = (try db.table(BiqDevice.self).where(\BiqDevice.id == record.topic).first()) else {
-      throw ChatException.invalidDevice
+      throw HTTPResponseError(status: .badRequest, description: "Invalid device.")
     }
 
     let fullName = account.meta?.fullName ?? "anonymous"
@@ -139,7 +102,7 @@ AND alias.account in (\(constrains))
 
   }
 
-  static func load(session rs: RequestSession) throws -> [ChatLogRecord] {
+  static func load(session rs: RequestSession) throws -> [ChatLog] {
     let db = try biqDatabaseInfo.deviceDb()
     let shared = try db.table(BiqDeviceAccessPermission.self)
       .where(\BiqDeviceAccessPermission.userId == rs.session.id).select()
@@ -154,7 +117,7 @@ AND alias.account in (\(constrains))
     let adb = try biqDatabaseInfo.authDb()
     let last = Int64(rs.request.param(name: "last") ?? "0") ?? 0
     let sql = "SELECT * FROM chatlog WHERE id > \(last) AND topic IN (\(dev)) AND DATE_PART('day', now() - utc) < 31 ORDER BY id, utc LIMIT 100"
-    let records: [ChatLogRecord] = try adb.sql(sql, ChatLogRecord.self)
+    let records: [ChatLog] = try adb.sql(sql, ChatLog.self)
     return records
   }
 }
