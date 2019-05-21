@@ -70,8 +70,9 @@ public extension BiqProfile {
 
 	init(from decoder: Decoder) throws {
 		let values = try decoder.container(keyedBy: CodingKeys.self)
-		id = try values.decode(DeviceURN.self, forKey: .id)
-		description = try values.decode(String.self, forKey: .description)
+		let _id = try values.decode(DeviceURN.self, forKey: .id)
+		let _description = try values.decode(String.self, forKey: .description)
+		self = BiqProfile(id: _id, description: _description)
 		do {
 			tags = try values.decode([String].self, forKey: .tags)
 		} catch {
