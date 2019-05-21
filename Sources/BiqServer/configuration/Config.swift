@@ -158,6 +158,9 @@ extension CloudFormation.RDSInstance {
 		if !BiqRecipe.prepare(config: db.configuration) {
 			throw CRUDSQLExeError("CREATE DATABASE BiqRecipe*")
 		}
+		try db.create(BiqProfileTag.self, policy: [.reconcileTable, .shallow]).index(unique: true, \BiqProfileTag.id, \BiqProfileTag.tag)
+		try db.create(BiqProfile.self, primaryKey: \BiqProfile.id, policy: [.reconcileTable, .shallow])
+		try authDb().create(ChatLog.self, primaryKey: \ChatLog.id, policy: [.reconcileTable, .shallow]).index(unique: true, \ChatLog.utc, \ChatLog.topic, \ChatLog.poster)
 		try db.create(BiqBookmark.self, policy: [.reconcileTable, .shallow]).index(\BiqBookmark.id)
 		try db.create(BiqDevice.self, policy: [.reconcileTable, .shallow])
 			.index(\BiqDevice.ownerId)

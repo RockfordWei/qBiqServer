@@ -13,6 +13,7 @@ import SwiftCodables
 import SAuthCodables
 import PerfectNotifications
 import PerfectThread
+import PerfectHTTP
 
 public struct ProfileAPIResponse: Codable {
   public var content = ""
@@ -107,11 +108,11 @@ public struct ProfileHandlers {
   static func validate(session rs: RequestSession) throws -> [IAPReceiptAgent.ReceiptItem] {
     guard let postbody = rs.request.postBodyString,
       !biqIAPSecret.isEmpty else {
-      throw QBiqError.reason("empty")
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
     }
     guard let agentPro = IAPReceiptAgent.init(base64EncodedReceipt: postbody, password: biqIAPSecret),
       let agentSandbox = IAPReceiptAgent.init(base64EncodedReceipt: postbody, password: biqIAPSecret, sandbox: true) else {
-        throw QBiqError.reason("init")
+				throw HTTPResponseError(status: .badRequest, description: "Unable to initialize.")
     }
     let receipts = try agentPro.syncValidate()
     if receipts.isEmpty {

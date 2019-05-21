@@ -18,111 +18,95 @@ func shareTokenKey(_ uuid: Foundation.UUID, deviceId: DeviceURN) -> String {
 	return "share-token:\(uuid):\(deviceId)"
 }
 
-/// History Record data control
-public struct BiqBookmark: Codable, IdHashable {
-	/// The permanent unique id for this qBiq device.
-	public let id: DeviceURN
-	/// The bookmark point
-	public let timestamp: Double
-	/// Init a new BiqBookmark struct.
-	public init(id i: DeviceURN, timestamp t: Double) {
-		id = i
-		timestamp = t
+public extension BiqProfile {
+
+	enum CodingKeys: String, CodingKey {
+		case id
+		case description
+		// computed property
+		case tags
+		case name
 	}
-}
 
-public struct QBiqStat: Codable {
-  public let owned: Int
-  public let followed: Int
-  public let following: Int
-}
+	var tags: [String] {
+		get {
+			do {
+				let db = try biqDatabaseInfo.deviceDb()
+				let table = db.table(BiqProfileTag.self)
+				return try table.where(\BiqProfileTag.id == self.id).select().map { $0.tag }
+			} catch (let err) {
+				CRUDLogging.log(.error, "unable to locate device database: \(err)")
+				return []
+			}
+		}
+		set {
+			do {
+				let db = try biqDatabaseInfo.deviceDb()
+				let table = db.table(BiqProfileTag.self)
+				try db.transaction {
+					try table.where(\BiqProfileTag.id == self.id).delete()
+					for tag in newValue {
+						try table.insert(BiqProfileTag(id: self.id, tag: tag))
+					}
+				}
+			} catch (let err) {
+				CRUDLogging.log(.error, "unable to reset tags: \(err)")
+				return
+			}
+		}
+	}
 
-public struct QBiqSearchResult: Codable {
-  public let id: String
-  public let name: String
-}
+	var name: String {
+		do {
+			let db = try biqDatabaseInfo.deviceDb()
+			let table = db.table(BiqDevice.self)
+			guard let device = try table.where(\BiqDevice.id == self.id).first() else { return "" }
+			return device.name
+		} catch (let err) {
+			CRUDLogging.log(.error, "unable to get name: \(err)")
+			return ""
+		}
+	}
 
-public struct QBiqTagSearchResult: Codable {
-  public let id: String
-  public let name: String
-  public let description: String
-  public let tags: [String]
-}
+	init(from decoder: Decoder) throws {
+		let values = try decoder.container(keyedBy: CodingKeys.self)
+		id = try values.decode(DeviceURN.self, forKey: .id)
+		description = try values.decode(String.self, forKey: .description)
+		do {
+			tags = try values.decode([String].self, forKey: .tags)
+		} catch {
+			// ignore computated property decoding errors since it could be blank
+		}
+	}
 
-public struct QBiqProfileRecord: Codable {
-  public let id: DeviceURN
-  public let description: String
-}
+	func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(id, forKey: .id)
+		try container.encode(description, forKey: .description)
+		try container.encode(tags, forKey: .tags)
+		try container.encode(name, forKey: .name)
+	}
 
-public struct QBiqProfileTag: Codable {
-  public let id: DeviceURN
-  public let tag: String
-}
-
-public struct QBiqProfile: Codable {
-  public let id: DeviceURN
-  public let description: String
-  public let tags: [String]
-}
-
-public struct QBiqLocationUpdate: Codable {
-  public let id: DeviceURN
-  public let x: Double
-  public let y: Double
-}
-
-public enum QBiqError: Error {
-  case reason(String)
-}
-
-public extension QBiqProfile {
-
-	static func load(id: DeviceURN) throws -> QBiqProfile? {
+	static func load(id: DeviceURN) throws -> BiqProfile? {
     let db = try biqDatabaseInfo.deviceDb()
-    let records: [QBiqProfileRecord] = try db.table(QBiqProfileRecord.self).where(\QBiqProfileRecord.id == id).select().map { $0 }
-    let tags = try db.table(QBiqProfileTag.self).where(\QBiqProfileTag.id == id).select().map { $0.tag }
-    if let me = records.first {
-      return QBiqProfile.init(id: id, description: me.description, tags: tags)
-    } else {
-      return QBiqProfile.init(id: id, description: "", tags: tags)
-    }
+		guard let profile = (try db.table(BiqProfile.self).where(\BiqProfile.id == id).first()) else {
+			return nil
+		}
+		_ = profile.tags
+		return profile
   }
 
-	static func setup() throws {
-    let db = try biqDatabaseInfo.deviceDb()
-    try db.sql(
-      """
-CREATE TABLE IF NOT EXISTS QBiqProfileRecord (
-  id VARCHAR(36) NOT NULL PRIMARY KEY,
-  description VARCHAR(1024) DEFAULT ''
-);
-""")
-    try db.sql(
-      """
-CREATE TABLE IF NOT EXISTS QBiqProfileTag (
-  id VARCHAR(36) NOT NULL,
-  tag VARCHAR(64) NOT NULL,
-  PRIMARY KEY (id, tag)
-);
-""")
-  }
 	func save(uid: Foundation.UUID) throws {
     let db = try biqDatabaseInfo.deviceDb()
     guard let _ = try db.table(BiqDevice.self).where(\BiqDevice.id == self.id && \BiqDevice.ownerId == uid).first() else {
-      throw QBiqError.reason("invalid owner id")
+			throw HTTPResponseError(status: .badRequest, description: "Invalid owner.")
     }
-    let prof = QBiqProfileRecord.init(id: self.id, description: self.description)
-    let tb = db.table(QBiqProfileTag.self)
-    let tbprof = db.table(QBiqProfileRecord.self)
-    try db.transaction {
-			try tbprof.where(\QBiqProfileRecord.id == self.id).delete()
-      try tb.where(\QBiqProfileTag.id == self.id).delete()
-			try tbprof.insert(prof)
-      for t in self.tags {
-        let r = QBiqProfileTag.init(id: self.id, tag: t)
-        try tb.insert(r)
-      }
-    }
+		let table = db.table(BiqProfile.self)
+		if try table.where(\BiqProfile.id == self.id).count() > 0 {
+			try table.update(self)
+		} else {
+			try table.insert(self)
+		}
   }
 }
 
@@ -206,29 +190,16 @@ struct DeviceHandlers {
 		return p
 	}
 	
-  static func deviceTag(session rs: RequestSession) throws -> [QBiqTagSearchResult] {
-    guard let tag = rs.request.param(name: "with"), !tag.isEmpty else {
-      throw QBiqError.reason("empty")
+  static func deviceTag(session rs: RequestSession) throws -> [BiqProfile] {
+    guard let pattern = rs.request.param(name: "with") else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
     }
-    let sql =
-"""
-SELECT * FROM (SELECT BiqDevice.id AS id, BiqDevice.name AS name,
-  QBiqProfileRecord.description AS description
-FROM BiqDevice
-LEFT JOIN QBiqProfileRecord ON BiqDevice.id = QBiqProfileRecord.id) AS BiqDeviceProfile
-WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
-"""
-    struct QBiqSimpleProfile: Codable {
-      public let id: String
-      public let name: String
-      public let description: String
-    }
+		let keys = pattern.split(separator: " ").compactMap { String($0).trimmingCharacters(in: CharacterSet(charactersIn: " \t\r\n") ) }
+		guard !keys.isEmpty else { return  [] }
+		let likes = keys.map { "tag LIKE '%\($0)%'" }.joined(separator: " OR ")
+		let sql = "SELECT * FROM BiqDevice WHERE \(likes)";
     let db = try biqDatabaseInfo.deviceDb()
-    let simple: [QBiqSimpleProfile] = try db.sql(sql, QBiqSimpleProfile.self)
-    return try simple.map { prof -> QBiqTagSearchResult in
-      let tags = try db.table(QBiqProfileTag.self).where(\QBiqProfileTag.id == prof.id).select().map { $0.tag }
-      return QBiqTagSearchResult.init(id: prof.id, name: prof.name, description: prof.description, tags: tags)
-    }
+    return try db.sql(sql, BiqProfile.self)
   }
 
   static func deviceFollowers(session rs: RequestSession) throws -> [String] {
@@ -245,10 +216,10 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
 
   static func deviceUpdateLocation(session rs: RequestSession) throws -> ProfileAPIResponse {
     guard let postbody = rs.request.postBodyBytes else {
-      throw QBiqError.reason("empty")
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
     }
     let postdata = Data.init(bytes: postbody)
-    let profile = try JSONDecoder.init().decode(QBiqLocationUpdate.self, from: postdata)
+    let profile = try JSONDecoder.init().decode(BiqLocation.self, from: postdata)
     let db = try biqDatabaseInfo.deviceDb()
 
     try db.sql("UPDATE biqdevice SET longitude = $1, latitude = $2 WHERE id = $3 AND ownerid = $4", bindings: [
@@ -260,38 +231,37 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
   
   static func deviceProfileUpdate(session rs: RequestSession) throws -> ProfileAPIResponse {
     guard let postbody = rs.request.postBodyBytes else {
-      throw QBiqError.reason("empty")
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
     }
     let postdata = Data.init(bytes: postbody)
-    let profile = try JSONDecoder.init().decode(QBiqProfile.self, from: postdata)
+    let profile = try JSONDecoder.init().decode(BiqProfile.self, from: postdata)
     try profile.save(uid: rs.session.id)
     return ProfileAPIResponse.init(content: "updated")
   }
 
-  static func deviceProfileGet(session rs: RequestSession) throws -> QBiqProfile {
+  static func deviceProfileGet(session rs: RequestSession) throws -> BiqProfile {
     guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
-      throw QBiqError.reason("empty")
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
     }
-    guard let prof = try QBiqProfile.load(id: uid) else {
-      throw QBiqError.reason("invalid")
+    guard let prof = try BiqProfile.load(id: uid) else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
     }
     return prof
   }
 
-  static func deviceSearch(session rs: RequestSession) throws -> [QBiqSearchResult] {
+  static func deviceSearch(session rs: RequestSession) throws -> [BiqDevice] {
     guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
-      return []
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
     }
     let db = try biqDatabaseInfo.deviceDb()
-    let sql = "SELECT * FROM biqdevice WHERE id LIKE '%\(uid)' OR name LIKE '%\(uid)%' LIMIT 5"
-    let devTable = try db.sql(sql, BiqDevice.self)
-    return devTable.map { QBiqSearchResult.init(id: $0.id, name: $0.name) }
+		return try db.table(BiqDevice.self).limit(5, skip: 0)
+			.where(\BiqDevice.id %=% uid || \BiqDevice.name %=% uid).select().map { $0 }
   }
 
-  static func deviceStat(session rs: RequestSession) throws -> QBiqStat {
+  static func deviceStat(session rs: RequestSession) throws -> BiqStat {
     guard let id = rs.request.param(name: "uid"),
       let uid = UUID.init(uuidString: id)  else {
-      return QBiqStat.init(owned: -1, followed: -1, following: -1)
+      return BiqStat(owned: -1, followed: -1, following: -1)
     }
     let db = try biqDatabaseInfo.deviceDb()
     let owned = try db.table(BiqDevice.self).where(\BiqDevice.ownerId == uid).select().map { $0.id }
@@ -303,7 +273,7 @@ WHERE id IN (SELECT id FROM QBiqProfileTag WHERE tag LIKE '%\(tag)%');
     }
     let uniqFollowed = Set<String>(followed)
     let following = try db.table(BiqDeviceAccessPermission.self).where(\BiqDeviceAccessPermission.userId == uid).count()
-    return QBiqStat.init(owned: owned.count, followed: uniqFollowed.count, following: following)
+    return BiqStat(owned: owned.count, followed: uniqFollowed.count, following: following)
   }
 
 	private static func getLimits<C: DatabaseConfigurationProtocol>(
