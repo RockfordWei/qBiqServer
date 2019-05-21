@@ -12,15 +12,15 @@ import Foundation
 
 
 extension String {
-  func env(_ defaultValue: String = "" ) -> String {
-    guard let pval = getenv(self) else {
-      print("loading env ", self, " = ", defaultValue)
-      return defaultValue
-    }
-    let val = String.init(cString: pval)
-    print("loading env ", self, " = ", val)
-    return val
-  }
+	func env(_ defaultValue: String = "" ) -> String {
+		guard let pval = getenv(self) else {
+			print("loading env ", self, " = ", defaultValue)
+			return defaultValue
+		}
+		let val = String.init(cString: pval)
+		print("loading env ", self, " = ", val)
+		return val
+	}
 }
 
 _ = PerfectCrypto.isInitialized
@@ -59,7 +59,7 @@ workGroup.add(worker: NotePoller())
 let routes = mainRoutes()
 #if os(Linux)
 try HTTPServer.launch(.secureServer(TLSConfiguration(certPath: "/root/combo.crt", keyPath: "/root/server.key"),
-                                    name: "api.ubiqweus.com", port: port, routes: routes))
+									name: "api.ubiqweus.com", port: port, routes: routes))
 #else
 try HTTPServer.launch(name: "api.ubiqweus.com", port: port, routes: routes)
 #endif

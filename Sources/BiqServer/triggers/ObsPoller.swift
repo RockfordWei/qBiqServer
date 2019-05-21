@@ -36,7 +36,7 @@ public struct RedisWorkGroup {
 		scheduleWorker(worker, state: nil, queue: DispatchQueue(label: "RedisWorkGroup.workers"))
 	}
 	func scheduleWorker<Worker: RedisWorker>(_ worker: Worker, state: Worker.State?, queue: DispatchQueue) {
-//		CRUDLogging.log(.info, "Scheduling worker \(type(of: worker))")
+		//		CRUDLogging.log(.info, "Scheduling worker \(type(of: worker))")
 		queue.asyncAfter(deadline: .now() + worker.workPauseSeconds) {
 			if let newState = worker.run(workGroup: self, state: state) {
 				self.scheduleWorker(worker, state: newState, queue: queue)
@@ -113,21 +113,21 @@ extension ObsDatabase.BiqObservation {
 }
 /*
 extension BiqDeviceLimitType: CustomStringConvertible {
-	public var description: String {
-		if self == .tempHigh {
-			return "High Temperature"
-		}
-		if self == .tempLow {
-			return "Low Temperature"
-		}
-		if self == .movementLevel {
-			return "Movement Level"
-		}
-		if self == .batteryLevel {
-			return "Battery Level"
-		}
-		return "Invalid"
-	}
+public var description: String {
+if self == .tempHigh {
+return "High Temperature"
+}
+if self == .tempLow {
+return "Low Temperature"
+}
+if self == .movementLevel {
+return "Movement Level"
+}
+if self == .batteryLevel {
+return "Battery Level"
+}
+return "Invalid"
+}
 }
 */
 protocol RedisProcessingItem {
@@ -195,7 +195,7 @@ struct NotificationTask: RedisProcessingItem {
 	let batteryLevel: Double
 	let charging: Bool
 	let client: RedisClient
-
+	
 	func formattedObsValue(tempScale: TemperatureScale) -> String {
 		let t = BiqDeviceLimitType(rawValue: limitType)
 		if t == .tempHigh {
@@ -212,20 +212,20 @@ struct NotificationTask: RedisProcessingItem {
 		}
 		return "\(obsValue)"
 	}
-
+	
 	// returns nil if task is in ignore list
 	// adds task to ignore list
 	// adds hash w/key
 	// adds key to list
 	init?(userId: UserId,
-				timeout: TimeInterval,
-				deviceId: DeviceURN,
-				limitType: UInt8,
-				obsValue: Double,
-				batteryLevel: Double,
-				charging: Bool,
-				client: RedisClient) throws {
-
+		  timeout: TimeInterval,
+		  deviceId: DeviceURN,
+		  limitType: UInt8,
+		  obsValue: Double,
+		  batteryLevel: Double,
+		  charging: Bool,
+		  client: RedisClient) throws {
+		
 		self.userId = userId
 		self.deviceId = deviceId
 		self.limitType = limitType
@@ -246,7 +246,7 @@ struct NotificationTask: RedisProcessingItem {
 		hash["charging"] = .string("\(charging)")
 		client.list(named: noteAddMsgKey).append(key)
 	}
-
+	
 	// init with existing task
 	init?(key: String, client: RedisClient) throws {
 		let hash = RedisHash(client, name: key)
@@ -259,7 +259,7 @@ struct NotificationTask: RedisProcessingItem {
 			let obsValueR = hash["obsValue"]?.string,
 			let batteryLevelR = hash["batteryLevel"]?.string,
 			let chargingR = hash["charging"]?.string,
-
+			
 			let userId = UUID(uuidString: userIdR),
 			let limitType = UInt8(limitTypeR),
 			let obsValue = Double(obsValueR),
@@ -277,11 +277,11 @@ struct NotificationTask: RedisProcessingItem {
 		self.charging = charging
 		self.client = client
 	}
-
+	
 	private var notificationIgnoreKey: String {
 		return "\(notificationPrefix):\(ignorePrefix):\(userId):\(deviceId):\(limitType)"
 	}
-
+	
 	private func taskOK(timeout: TimeInterval) throws -> Bool {
 		let key = notificationIgnoreKey
 		let response = try client.set(key: key, value: .string(key), expires: timeout, ifNotExists: true)
@@ -293,7 +293,7 @@ struct NotificationTask: RedisProcessingItem {
 }
 
 public extension BiqDeviceLimitType {
-
+	
 	static let humidityLow = BiqDeviceLimitType(rawValue: 12)
 	static let humidityHigh = BiqDeviceLimitType(rawValue: 13)
 	static let brightnessLow = BiqDeviceLimitType(rawValue: 14)
@@ -312,11 +312,11 @@ struct ObsPoller: RedisWorker {
 				()
 			} while try readItem(with: client)
 		} catch (let err) {
-      let emsg = "run(workGroup.client) \(err)"
-      guard emsg.contains("282") && emsg.contains("timeout") else {
-        CRUDLogging.log(.error, emsg)
-        return false
-      }
+			let emsg = "run(workGroup.client) \(err)"
+			guard emsg.contains("282") && emsg.contains("timeout") else {
+				CRUDLogging.log(.error, emsg)
+				return false
+			}
 		}
 		return true
 	}
@@ -326,7 +326,7 @@ struct ObsPoller: RedisWorker {
 		}
 		return try handleNewObs(obs, client: client)
 	}
-
+	
 	private func handleNewObs(_ obj: ProcessingObs, client: RedisClient) throws -> Bool {
 		let db = try biqDatabaseInfo.deviceDb()
 		let deviceId = obj.obs.deviceId
@@ -354,13 +354,13 @@ struct ObsPoller: RedisWorker {
 						continue
 			}
 			if let _ = try NotificationTask(userId: limit.userId,
-																			timeout: TimeInterval(notesLimit),
-																			deviceId: obj.obs.deviceId,
-																			limitType: limit.limitType,
-																			obsValue: limit.valueFromObs(obj.obs),
-																			batteryLevel: obj.obs.battery,
-																			charging: obj.obs.charging != 0,
-																			client: client) {
+											timeout: TimeInterval(notesLimit),
+											deviceId: obj.obs.deviceId,
+											limitType: limit.limitType,
+											obsValue: limit.valueFromObs(obj.obs),
+											batteryLevel: obj.obs.battery,
+											charging: obj.obs.charging != 0,
+											client: client) {
 				CRUDLogging.log(.info, "Ready for user/device: \(limit.userId):\(obj.obs.deviceId):\(limit.limitType)")
 			} else {
 				CRUDLogging.log(.info, "User/device in ignore list: \(limit.userId):\(obj.obs.deviceId):\(limit.limitType)")
@@ -373,7 +373,7 @@ struct ObsPoller: RedisWorker {
 
 struct NotePoller: RedisWorker {
 	typealias State = Bool
-
+	
 	let workPauseSeconds: TimeInterval = 5.0
 	func run(workGroup: RedisWorkGroup, state: Bool?) -> Bool? {
 		do {
@@ -381,13 +381,13 @@ struct NotePoller: RedisWorker {
 			repeat {
 				()
 			} while try readItem(with: client)
-    } catch (let err) {
-      let emsg = "run(workGroup.client) \(err)"
-      guard emsg.contains("282") && emsg.contains("timeout") else {
-        CRUDLogging.log(.error, emsg)
-        return false
-      }
-    }
+		} catch (let err) {
+			let emsg = "run(workGroup.client) \(err)"
+			guard emsg.contains("282") && emsg.contains("timeout") else {
+				CRUDLogging.log(.error, emsg)
+				return false
+			}
+		}
 		return true
 	}
 	private func readItem(with client: RedisClient) throws -> Bool {
@@ -438,7 +438,7 @@ struct NotePoller: RedisWorker {
 		if !userIds.isEmpty {
 			let userDevices = try mobileTable.where(\MobileDeviceId.aliasId ~ userIds).select().map { $0.deviceId }
 			let formattedValue = obj.formattedObsValue(tempScale: tempScale)
-
+			
 			CRUDLogging.log(.info, "Notification for \(obj.userId) \(obj.deviceId) \(obj.limitType) \(userDevices.joined(separator: " "))")
 			let promise: Promise<Bool> = Promise {
 				p in
@@ -543,11 +543,11 @@ struct TheWatcher: RedisWorker {
 			}
 			return returnSuspects
 		} catch (let err) {
-      let emsg = "Error while watching: \(err)"
-      if emsg.contains("282") && emsg.contains("timeout") {
-      } else {
-        CRUDLogging.log(.error, emsg)
-      }
+			let emsg = "Error while watching: \(err)"
+			if emsg.contains("282") && emsg.contains("timeout") {
+			} else {
+				CRUDLogging.log(.error, emsg)
+			}
 		}
 		return state ?? []
 	}

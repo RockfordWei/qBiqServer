@@ -93,7 +93,7 @@ extension GroupHandlers {
 			guard let group = try db.table(BiqDeviceGroup.self)
 				.where(\BiqDeviceGroup.id == addRequest.groupId &&
 					\BiqDeviceGroup.ownerId == session.id).first() else {
-				throw HTTPResponseError(status: .badRequest, description: "Group does not exist.")
+						throw HTTPResponseError(status: .badRequest, description: "Group does not exist.")
 			}
 			// is this user the owner?
 			// this is where we would check ownership vs. follow-invite
