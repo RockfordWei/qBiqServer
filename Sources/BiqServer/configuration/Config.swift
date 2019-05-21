@@ -155,8 +155,9 @@ extension CloudFormation.RDSInstance {
 			}
 		}
 		let db = try deviceDb()
-		try db.create(BiqRecipeTag.self, policy: [.reconcileTable, .shallow]).index(unique: true, \BiqRecipeTag.recipe, \BiqRecipeTag.tag)
-		try db.create(BiqRecipe.self, primaryKey: \BiqRecipe.id, policy: [.reconcileTable, .shallow])
+		if !BiqRecipe.prepare(config: db.configuration) {
+			throw CRUDSQLExeError("CREATE DATABASE BiqRecipe*")
+		}
 		try db.create(BiqBookmark.self, policy: [.reconcileTable, .shallow]).index(\BiqBookmark.id)
 		try db.create(BiqDevice.self, policy: [.reconcileTable, .shallow])
 			.index(\BiqDevice.ownerId)

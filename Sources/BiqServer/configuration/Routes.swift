@@ -22,11 +22,20 @@ func mainRoutes() -> Routes {
 		recipeRoutes.add(method: .post, uri: "/set", handler: RecipeHandlers.recipeSet)
 		recipeRoutes.add(method: .post, uri: "/tag/add", handler: RecipeHandlers.recipeTagAdd)
 		recipeRoutes.add(method: .post, uri: "/tag/del", handler: RecipeHandlers.recipeTagRemove)
+		recipeRoutes.add(method: .post, uri: "/tag/set", handler: RecipeHandlers.recipeTagSet)
 		recipeRoutes.add(method: .get,  uri: "/tag/get", handler: RecipeHandlers.recipeTagGet)
+		recipeRoutes.add(method: .post, uri: "/media/add", handler: RecipeHandlers.recipeMediaAdd)
+		recipeRoutes.add(method: .post, uri: "/media/del", handler: RecipeHandlers.recipeMediaRemove)
+		recipeRoutes.add(method: .post, uri: "/media/set", handler: RecipeHandlers.recipeMediaSet)
+		recipeRoutes.add(method: .get,  uri: "/media/get", handler: RecipeHandlers.recipeMediaGet)
+		recipeRoutes.add(method: .post, uri: "/threshold/add", handler: RecipeHandlers.recipeThresholdAdd)
+		recipeRoutes.add(method: .post, uri: "/threshold/del", handler: RecipeHandlers.recipeThresholdRemove)
+		recipeRoutes.add(method: .post, uri: "/threshold/set", handler: RecipeHandlers.recipeThresholdSet)
+		recipeRoutes.add(method: .get,  uri: "/threshold/get", handler: RecipeHandlers.recipeThresholdGet)
 		recipeRoutes.add(method: .get, uri: "/search", handler: RecipeHandlers.search)
 	}
 	v1.add(recipeRoutes)
-	
+
 	var groupRoutes = TRoutes(baseUri: "/group", handler: GroupHandlers.identity)
 	do {
 		groupRoutes.add(method: .get, uri: "/list", handler: GroupHandlers.groupList)
