@@ -46,8 +46,12 @@ public extension BiqProfile {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid owner.")
 		}
 		let table = db.table(BiqProfile.self)
-		if try table.where(\BiqProfile.id == self.id).count() > 0 {
-			try table.update(self)
+		let filter = table.where(\BiqProfile.id == self.id)
+		if try filter.count() > 0 {
+			try db.transaction {
+				try filter.delete()
+				try table.insert(self)
+			}
 		} else {
 			try table.insert(self)
 		}
