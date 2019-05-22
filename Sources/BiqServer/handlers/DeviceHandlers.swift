@@ -198,7 +198,7 @@ struct DeviceHandlers {
 		let keys = pattern.split(separator: " ").compactMap { String($0).trimmingCharacters(in: CharacterSet(charactersIn: " \t\r\n") ) }
 		guard !keys.isEmpty else { return  [] }
 		let likes = keys.map { "tag LIKE '%\($0)%'" }.joined(separator: " OR ")
-		let sql = "SELECT * FROM BiqDevice WHERE \(likes)";
+		let sql = "SELECT * FROM BiqDevice WHERE id IN (SELECT id FROM BiqProfileTag WHERE \(likes)); ";
 		let db = try biqDatabaseInfo.deviceDb()
 		return try db.sql(sql, BiqDevice.self)
 	}
