@@ -19,43 +19,7 @@ func shareTokenKey(_ uuid: Foundation.UUID, deviceId: DeviceURN) -> String {
 }
 
 public extension BiqProfile {
-	
-	enum CodingKeys: String, CodingKey {
-		case id
-		case description
-		// computed property
-		case tags
-		case name
-	}
-	
-	var tags: [String] {
-		get {
-			do {
-				let db = try biqDatabaseInfo.deviceDb()
-				let table = db.table(BiqProfileTag.self)
-				return try table.where(\BiqProfileTag.id == self.id).select().map { $0.tag }
-			} catch (let err) {
-				CRUDLogging.log(.error, "unable to locate device database: \(err)")
-				return []
-			}
-		}
-		set {
-			do {
-				let db = try biqDatabaseInfo.deviceDb()
-				let table = db.table(BiqProfileTag.self)
-				try db.transaction {
-					try table.where(\BiqProfileTag.id == self.id).delete()
-					for tag in newValue {
-						try table.insert(BiqProfileTag(id: self.id, tag: tag))
-					}
-				}
-			} catch (let err) {
-				CRUDLogging.log(.error, "unable to reset tags: \(err)")
-				return
-			}
-		}
-	}
-	
+
 	var name: String {
 		do {
 			let db = try biqDatabaseInfo.deviceDb()
@@ -67,33 +31,12 @@ public extension BiqProfile {
 			return ""
 		}
 	}
-	
-	init(from decoder: Decoder) throws {
-		let values = try decoder.container(keyedBy: CodingKeys.self)
-		let _id = try values.decode(DeviceURN.self, forKey: .id)
-		let _description = try values.decode(String.self, forKey: .description)
-		self = BiqProfile(id: _id, description: _description)
-		do {
-			tags = try values.decode([String].self, forKey: .tags)
-		} catch {
-			// ignore computated property decoding errors since it could be blank
-		}
-	}
-	
-	func encode(to encoder: Encoder) throws {
-		var container = encoder.container(keyedBy: CodingKeys.self)
-		try container.encode(id, forKey: .id)
-		try container.encode(description, forKey: .description)
-		try container.encode(tags, forKey: .tags)
-		try container.encode(name, forKey: .name)
-	}
-	
+
 	static func load(id: DeviceURN) throws -> BiqProfile? {
 		let db = try biqDatabaseInfo.deviceDb()
 		guard let profile = (try db.table(BiqProfile.self).where(\BiqProfile.id == id).first()) else {
 			return nil
 		}
-		_ = profile.tags
 		return profile
 	}
 	
@@ -248,6 +191,55 @@ struct DeviceHandlers {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid device id.")
 		}
 		return prof
+	}
+
+	static func deviceTagAdd(session rs: RequestSession) throws -> ProfileAPIResponse {
+		guard let postbody = rs.request.postBodyBytes else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
+		}
+		let postdata = Data.init(bytes: postbody)
+		let tags = try JSONDecoder.init().decode([BiqProfileTag].self, from: postdata)
+		let db = try biqDatabaseInfo.deviceDb()
+		let table = db.table(BiqProfileTag.self)
+		let total = tags.map { tag in
+			do {
+				try table.insert(tag)
+				return 1
+			} catch (let err) {
+				CRUDLogging.log(.error, "unable to add device tag [\(tag.id), \(tag.tag)]: \(err)")
+				return 0
+			}
+			}.reduce(0) { $0 + $1 }
+		return ProfileAPIResponse.init(content: "\(total)")
+	}
+
+	static func deviceTagDel(session rs: RequestSession) throws -> ProfileAPIResponse {
+		guard let postbody = rs.request.postBodyBytes else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
+		}
+		let postdata = Data.init(bytes: postbody)
+		let tags = try JSONDecoder.init().decode([BiqProfileTag].self, from: postdata)
+		let db = try biqDatabaseInfo.deviceDb()
+		let table = db.table(BiqProfileTag.self)
+		let total = tags.map { tag in
+			do {
+				try table.where(\BiqProfileTag.id == tag.id && \BiqProfileTag.tag == tag.tag).delete()
+				return 1
+			} catch (let err) {
+				CRUDLogging.log(.error, "unable to add device tag [\(tag.id), \(tag.tag)]: \(err)")
+				return 0
+			}
+			}.reduce(0) { $0 + $1 }
+		return ProfileAPIResponse.init(content: "\(total)")
+	}
+
+	static func deviceTagGet(session rs: RequestSession) throws -> [BiqProfileTag] {
+		guard let uid = rs.request.param(name: "uid"), !uid.isEmpty else {
+			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
+		}
+		let db = try biqDatabaseInfo.deviceDb()
+		let table = db.table(BiqProfileTag.self)
+		return try table.where(\BiqProfileTag.id == uid).select().map { $0 }
 	}
 	
 	static func deviceSearch(session rs: RequestSession) throws -> [BiqDevice] {
