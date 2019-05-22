@@ -44,12 +44,10 @@ extension BiqRecipe: Comparable {
 
 	public init(from decoder: Decoder) throws {
 		let values = try decoder.container(keyedBy: CodingKeys.self)
-		_ = try values.decode(String.self, forKey: .uri)
-		let _title = try values.decode(String.self, forKey: .title)
-		let _author = try values.decode(String.self, forKey: .author)
-		let _description = try values.decode(String.self, forKey: .description)
-
-		self = BiqRecipe.init(title: _title, author: _author, description: _description)
+		uri = try values.decode(String.self, forKey: .uri)
+		title = try values.decode(String.self, forKey: .title)
+		author = try values.decode(String.self, forKey: .author)
+		description = try values.decode(String.self, forKey: .description)
 
 		// don't have to decode those non-native properties
 		do {
