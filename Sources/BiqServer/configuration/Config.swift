@@ -64,10 +64,10 @@ let biqDatabaseInfo: CloudFormation.RDSInstance = {
 		return .init(resourceType: .postgres,
 					 resourceId: "",
 					 resourceName: "",
-           userName: "BIQ_PG_USER".env("postgres"),
-           password: "BIQ_PG_PASS".env(""),
-           hostName: "BIQ_PG_HOST".env("localhost"),
-           hostPort: Int("BIQ_PG_PORT".env("5432")) ?? 5432 )
+					 userName: "BIQ_PG_USER".env("postgres"),
+					 password: "BIQ_PG_PASS".env(""),
+					 hostName: "BIQ_PG_HOST".env("localhost"),
+					 hostPort: Int("BIQ_PG_PORT".env("5432")) ?? 5432 )
 	}
 }()
 
@@ -140,7 +140,7 @@ extension CloudFormation.RDSInstance {
 	func databaseConfiguration(database: String) throws -> PostgresDatabaseConfiguration {
 		return try .init(database: database, host: hostName, port: hostPort, username: userName, password: password)
 	}
-
+	
 	func initBiqDatabase() throws {
 		do {
 			let postgresConfig = try databaseConfiguration(database: "postgres")

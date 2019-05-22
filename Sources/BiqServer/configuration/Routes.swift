@@ -15,7 +15,7 @@ func mainRoutes() -> Routes {
 	routes.add(TRoute(method: .get, uri: "/healthcheck", handler: Handlers.healthCheck))
 	
 	var v1 = TRoutes(baseUri: "/\(apiVersion)", handler: Handlers.authCheck)
-
+	
 	var recipeRoutes = TRoutes(baseUri: "/recipe", handler: RecipeHandlers.identity)
 	do {
 		recipeRoutes.add(method: .get, uri: "/get", handler: RecipeHandlers.recipeGet)
@@ -35,7 +35,7 @@ func mainRoutes() -> Routes {
 		recipeRoutes.add(method: .get, uri: "/search", handler: RecipeHandlers.search)
 	}
 	v1.add(recipeRoutes)
-
+	
 	var groupRoutes = TRoutes(baseUri: "/group", handler: GroupHandlers.identity)
 	do {
 		groupRoutes.add(method: .get, uri: "/list", handler: GroupHandlers.groupList)
@@ -50,10 +50,10 @@ func mainRoutes() -> Routes {
 	
 	var deviceRoutes = TRoutes(baseUri: "/device", handler: DeviceHandlers.identity)
 	do {
-    deviceRoutes.add(method: .post, uri: "/profile/update", handler: DeviceHandlers.deviceProfileUpdate)
-    deviceRoutes.add(method: .get, uri: "/profile/get", handler: DeviceHandlers.deviceProfileGet)
-    deviceRoutes.add(method: .get, uri: "/search", handler: DeviceHandlers.deviceSearch)
-    deviceRoutes.add(method: .get, uri: "/stat", handler: DeviceHandlers.deviceStat)
+		deviceRoutes.add(method: .post, uri: "/profile/update", handler: DeviceHandlers.deviceProfileUpdate)
+		deviceRoutes.add(method: .get, uri: "/profile/get", handler: DeviceHandlers.deviceProfileGet)
+		deviceRoutes.add(method: .get, uri: "/search", handler: DeviceHandlers.deviceSearch)
+		deviceRoutes.add(method: .get, uri: "/stat", handler: DeviceHandlers.deviceStat)
 		deviceRoutes.add(method: .get, uri: "/list", handler: DeviceHandlers.deviceList)
 		deviceRoutes.add(method: .post, uri: "/register", handler: DeviceHandlers.deviceRegister)
 		deviceRoutes.add(method: .post, uri: "/unregister", handler: DeviceHandlers.deviceUnregister)
@@ -66,33 +66,33 @@ func mainRoutes() -> Routes {
 		deviceRoutes.add(method: .get, uri: "/info", handler: DeviceHandlers.deviceInfo)
 		deviceRoutes.add(method: .get, uri: "/limits", handler: DeviceHandlers.deviceGetLimits)
 		deviceRoutes.add(method: .post, uri: "/limits", handler: DeviceHandlers.deviceSetLimits)
-    deviceRoutes.add(method: .post, uri: "/location", handler: DeviceHandlers.deviceUpdateLocation)
-    deviceRoutes.add(method: .post, uri: "/followers", handler: DeviceHandlers.deviceFollowers)
-    deviceRoutes.add(method: .get, uri: "/tag", handler: DeviceHandlers.deviceTag)
+		deviceRoutes.add(method: .post, uri: "/location", handler: DeviceHandlers.deviceUpdateLocation)
+		deviceRoutes.add(method: .post, uri: "/followers", handler: DeviceHandlers.deviceFollowers)
+		deviceRoutes.add(method: .get, uri: "/tag", handler: DeviceHandlers.deviceTag)
 		deviceRoutes.add(method: .get, uri: "/type", handler: DeviceHandlers.deviceType)
 		deviceRoutes.add(method: .post, uri: "/bookmark", handler: DeviceHandlers.setBookmark)
 		deviceRoutes.add(method: .get, uri: "/firmware", handler: DeviceHandlers.firmware)
 	}
 	v1.add(deviceRoutes)
-
-  var chatRoutes = TRoutes(baseUri: "/chat", handler: ChatHandlers.identity)
-  do {
-    chatRoutes.add(method: .post, uri: "/save", handler: ChatHandlers.save)
-    chatRoutes.add(method: .get, uri: "/load", handler: ChatHandlers.load)
-  }
-  v1.add(chatRoutes)
-
-  var fileRoutes = TRoutes(baseUri: "/profile", handler: ProfileHandlers.identity)
-  do {
-    fileRoutes.add(method: .post, uri: "/upload", handler: ProfileHandlers.uploadImage)
-    fileRoutes.add(method: .get, uri: "/download", handler: ProfileHandlers.downloadImage)
-    fileRoutes.add(method: .post, uri: "/update", handler: ProfileHandlers.uploadText)
-    fileRoutes.add(method: .get, uri: "/get", handler: ProfileHandlers.downloadText)
-    fileRoutes.add(method: .get, uri: "/name", handler: ProfileHandlers.userFullName)
-    fileRoutes.add(method: .post, uri: "/bill", handler: ProfileHandlers.validate)
-  }
-  v1.add(fileRoutes)
-
-  routes.add(v1)
+	
+	var chatRoutes = TRoutes(baseUri: "/chat", handler: ChatHandlers.identity)
+	do {
+		chatRoutes.add(method: .post, uri: "/save", handler: ChatHandlers.save)
+		chatRoutes.add(method: .get, uri: "/load", handler: ChatHandlers.load)
+	}
+	v1.add(chatRoutes)
+	
+	var fileRoutes = TRoutes(baseUri: "/profile", handler: ProfileHandlers.identity)
+	do {
+		fileRoutes.add(method: .post, uri: "/upload", handler: ProfileHandlers.uploadImage)
+		fileRoutes.add(method: .get, uri: "/download", handler: ProfileHandlers.downloadImage)
+		fileRoutes.add(method: .post, uri: "/update", handler: ProfileHandlers.uploadText)
+		fileRoutes.add(method: .get, uri: "/get", handler: ProfileHandlers.downloadText)
+		fileRoutes.add(method: .get, uri: "/name", handler: ProfileHandlers.userFullName)
+		fileRoutes.add(method: .post, uri: "/bill", handler: ProfileHandlers.validate)
+	}
+	v1.add(fileRoutes)
+	
+	routes.add(v1)
 	return routes
 }

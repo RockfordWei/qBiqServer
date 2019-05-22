@@ -24,7 +24,7 @@ public enum BiqSensorType: Int, Codable {
 	case movement = 3
 	case acceleration = 4
 	case battery = 5
-
+	
 	public static let units: [String] = ["°C", "%", "%", "times", "g", "V"]
 }
 
@@ -36,25 +36,25 @@ public struct BiqRecipeResult: Codable {
 }
 
 public struct BiqThreshold: Codable {
-
+	
 	/// recipe id
 	public let uri: String
-
+	
 	/// sensor type, must be unique in the same recipe
 	public let measurement: Int
-
+	
 	/// lower range
 	public let low: Double
-
+	
 	/// upper range
 	public let high: Double
-
+	
 	/// effectiveness in this recipe
 	public var enabled: Bool
-
+	
 	/// callstack order in this recipe
 	public var index: Int
-
+	
 	public init(uri i: String, measurement m: BiqSensorType, low lo: Double, high hi: Double, enabled e: Bool, index inx: Int) {
 		uri = i; measurement = m.rawValue; low = lo; high = hi; enabled = e; index = inx
 	}
@@ -62,13 +62,13 @@ public struct BiqThreshold: Codable {
 
 /// recipe media attachement type, such as icon, tone, animation, etc.
 public enum BiqRecipeMediaType: Int, Codable {
-
+	
 	/// primary icon
 	case icon = 0
-
+	
 	/// primary tone when triggered
 	case tone = 1
-
+	
 	/// primary animation for future use
 	case animation = 2
 }
@@ -76,22 +76,22 @@ public enum BiqRecipeMediaType: Int, Codable {
 
 /// recipe media attachement, such as icon, tone, animation, etc
 public struct BiqRecipeMedia: Codable {
-
+	
 	/// recipe attached to
 	public let uri: String
-
+	
 	/// name/title of the media, must be unique in the same recipe
 	public let title: String
-
+	
 	/// MIME type string, for example, icon for `image/ico`, tone for `sound/wav` etc.
 	public let mime: String
-
+	
 	/// binary data for the media
 	public let payload: Data
-
+	
 	/// index type of this media, 0 for the primary logo
 	public let `type`: Int
-
+	
 	/// default constructor
 	public init(uri i: String, title t: String, mime m: String, payload p: Data, `type` tp: BiqRecipeMediaType) {
 		uri = i; title = t; mime = m; payload = p; type = tp.rawValue
@@ -100,10 +100,10 @@ public struct BiqRecipeMedia: Codable {
 
 /// searchable tags
 public struct BiqRecipeTag: Codable {
-
+	
 	/// recipe id
 	public let uri: String
-
+	
 	/// tag string, must be unique in the same recipe
 	public let tag: String
 	public init(uri i: String, tag t: String) {
@@ -113,55 +113,55 @@ public struct BiqRecipeTag: Codable {
 
 /// qbiq recipe
 public struct BiqRecipe: Codable, Comparable {
-
+	
 	enum CodingKeys: String, CodingKey {
 		case uri
 		case title
 		case author
 		case description
-
+		
 		case tags
 		case thresholds
 		case medium
 	}
-
+	
 	/// recipe id
 	public let uri: String
-
+	
 	/// name / title
 	public let title: String
-
+	
 	/// author / brand
 	public let author: String
-
+	
 	/// short introduction
 	public let description: String
-
+	
 	public init(from decoder: Decoder) throws {
 		let values = try decoder.container(keyedBy: CodingKeys.self)
 		uri = try values.decode(String.self, forKey: .uri)
 		title = try values.decode(String.self, forKey: .title)
 		author = try values.decode(String.self, forKey: .author)
 		description = try values.decode(String.self, forKey: .description)
-
+		
 		// don't have to decode those non-native properties
 		do {
 			self.tags = try values.decode([BiqRecipeTag].self, forKey: .tags)
 		} catch {
-
+			
 		}
 		do {
 			self.thresholds = try values.decode([BiqThreshold].self, forKey: .thresholds)
 		} catch {
-
+			
 		}
 		do {
 			self.medium = try values.decode([BiqRecipeMedia].self, forKey: .medium)
 		} catch {
-
+			
 		}
 	}
-
+	
 	public func encode(to encoder: Encoder) throws {
 		var container = encoder.container(keyedBy: CodingKeys.self)
 		try container.encode(uri, forKey: .uri)
@@ -172,7 +172,7 @@ public struct BiqRecipe: Codable, Comparable {
 		try container.encode(thresholds, forKey: .thresholds)
 		try container.encode(medium, forKey: .medium)
 	}
-
+	
 	/// default constructor
 	public init(title t: String, author a: String, description d: String) {
 		title = t; author = a; description = d
@@ -182,7 +182,7 @@ public struct BiqRecipe: Codable, Comparable {
 			uri = UUID().uuidString
 		}
 	}
-
+	
 	/// load an instance from database by its ID
 	public init?(uri i: String) {
 		guard let db = BiqRecipe.pdb else { return nil }
@@ -197,10 +197,10 @@ public struct BiqRecipe: Codable, Comparable {
 			return nil
 		}
 	}
-
+	
 	/// inner database handler
 	private static var pdb: Database<PostgresDatabaseConfiguration>? = nil
-
+	
 	/// MUST call this function first to build all tables associated.
 	/// - parameter config: configuration
 	/// - returns: true for success
@@ -218,7 +218,7 @@ public struct BiqRecipe: Codable, Comparable {
 			return false
 		}
 	}
-
+	
 	/// an abstract batch operation for tags, thresholds and medium
 	/// - parameter properties: a collection of either tags, threshold or medium
 	/// - parameter operation: a callback function to `(table, element)`
@@ -239,7 +239,7 @@ public struct BiqRecipe: Codable, Comparable {
 		}
 		return ret == properties.count
 	}
-
+	
 	private func readProperties<T: Codable>(filter: CRUDBooleanExpression) -> [T] {
 		guard let db = BiqRecipe.pdb else { return [] }
 		let table = db.table(T.self)
@@ -251,7 +251,7 @@ public struct BiqRecipe: Codable, Comparable {
 			return []
 		}
 	}
-
+	
 	private func writeProperties<T: Codable>(batch: [T], filter: CRUDBooleanExpression) {
 		guard let db = BiqRecipe.pdb else { return }
 		let table = db.table(T.self)
@@ -266,7 +266,7 @@ public struct BiqRecipe: Codable, Comparable {
 			CRUDLogging.log(.error, "unable to write properties because \(err)")
 		}
 	}
-
+	
 	public func add<T: Codable>(property: T) -> Bool {
 		guard let db = BiqRecipe.pdb else { return false }
 		let table = db.table(T.self)
@@ -278,7 +278,7 @@ public struct BiqRecipe: Codable, Comparable {
 			return false
 		}
 	}
-
+	
 	public func del<T: Codable>(`type`: T.Type, condition: CRUDBooleanExpression) -> Bool {
 		guard let db = BiqRecipe.pdb else { return false }
 		let table = db.table(type)
@@ -290,7 +290,7 @@ public struct BiqRecipe: Codable, Comparable {
 			return false
 		}
 	}
-
+	
 	/// all tags associated to this recipe
 	public var tags: [BiqRecipeTag] {
 		get {
@@ -307,7 +307,7 @@ public struct BiqRecipe: Codable, Comparable {
 			}
 		}
 	}
-
+	
 	/// all thresholds associated to this recipe
 	public var thresholds: [BiqThreshold] {
 		get {
@@ -324,7 +324,7 @@ public struct BiqRecipe: Codable, Comparable {
 			}
 		}
 	}
-
+	
 	/// all media attachments associated to this recipe
 	public var medium: [BiqRecipeMedia] {
 		get {
@@ -341,7 +341,7 @@ public struct BiqRecipe: Codable, Comparable {
 			}
 		}
 	}
-
+	
 	/// deposit this recipe to database
 	/// - returns: true for success
 	public func save() -> Bool {
@@ -359,7 +359,7 @@ public struct BiqRecipe: Codable, Comparable {
 			return false
 		}
 	}
-
+	
 	public static func delete(uri: String) -> Bool {
 		guard let db = BiqRecipe.pdb else { return false }
 		do {
@@ -379,26 +379,26 @@ public struct BiqRecipe: Codable, Comparable {
 			return false
 		}
 	}
-
+	
 	public static func < (lhs: BiqRecipe, rhs: BiqRecipe) -> Bool {
 		return lhs.uri == rhs.uri
 	}
-
+	
 	public static let blank = CharacterSet(charactersIn: " \t\r\n")
 	public static func search(_ pattern: String, limitation: Int = 100) -> [BiqRecipe] {
 		guard let db = BiqRecipe.pdb else { return [] }
-
+		
 		let keys = pattern.split(separator: " ").compactMap { String($0).trimmingCharacters(in: blank ) }
 		guard !keys.isEmpty else { return  [] }
-
-
+		
+		
 		let or = " OR "
 		let titleLikes = keys.map { "title LIKE '%\($0)%'" }.joined(separator: or)
 		let authorLikes = keys.map { "author LIKE '%\($0)%'" }.joined(separator: or)
 		let descLikes = keys.map { "description LIKE '%\($0)%'" }.joined(separator: or)
 		let tagLikes = keys.map { "tag LIKE '%\($0)%'" }.joined(separator: or)
 		let mediaLikes = titleLikes
-
+		
 		let limit = limitation > 0 && limitation < 101 ? limitation : 100
 		let sql = """
 		SELECT * FROM BiqRecipe
@@ -407,7 +407,7 @@ public struct BiqRecipe: Codable, Comparable {
 		OR uri IN (SELECT DISTINCT uri FROM BiqRecipeMedia WHERE \(mediaLikes))
 		LIMIT \(limit);
 		"""
-
+		
 		do {
 			let result = try db.sql(sql, BiqRecipe.self)
 			return result
@@ -416,7 +416,7 @@ public struct BiqRecipe: Codable, Comparable {
 			return []
 		}
 	}
-
+	
 	public var json: String? {
 		do {
 			let encoded = try JSONEncoder().encode(self)
@@ -438,16 +438,16 @@ struct RecipeHandlers {
 	static func identity(session rs: RequestSession) throws -> RequestSession {
 		return rs
 	}
-
+	
 	static func recipeGet(session rs: RequestSession) throws -> BiqRecipe? {
 		guard let uri = rs.request.param(name: "uri"),
 			let urlencoded = uri.addingPercentEncoding(withAllowedCharacters: .urlHostAllowed)?.lowercased(),
 			let recipe = BiqRecipe(uri: urlencoded) else {
-			throw HTTPResponseError(status: .badRequest, description: "Invalid recipe uri.")
+				throw HTTPResponseError(status: .badRequest, description: "Invalid recipe uri.")
 		}
 		return recipe
 	}
-
+	
 	static func recipeSet(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -458,7 +458,7 @@ struct RecipeHandlers {
 		}
 		return BiqRecipeResult(1)
 	}
-
+	
 	static func recipeTagAdd(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -471,7 +471,7 @@ struct RecipeHandlers {
 		let total = results.reduce(0) { $0 + $1 }
 		return BiqRecipeResult(total)
 	}
-
+	
 	static func recipeTagRemove(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -484,7 +484,7 @@ struct RecipeHandlers {
 		let total = results.reduce(0) { $0 + $1 }
 		return BiqRecipeResult(total)
 	}
-
+	
 	static func recipeTagSet(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -496,14 +496,14 @@ struct RecipeHandlers {
 		recipe.tags = tags
 		return BiqRecipeResult(recipe.tags.count)
 	}
-
+	
 	static func recipeTagGet(session rs: RequestSession) throws -> [String] {
 		guard let uri = rs.request.param(name: "uri"), let recipe = BiqRecipe(uri: uri) else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid recipe uri.")
 		}
 		return recipe.tags.map { $0.tag }
 	}
-
+	
 	static func recipeMediaAdd(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -516,7 +516,7 @@ struct RecipeHandlers {
 		let total = results.reduce(0) { $0 + $1 }
 		return BiqRecipeResult(total)
 	}
-
+	
 	static func recipeMediaRemove(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -529,7 +529,7 @@ struct RecipeHandlers {
 		let total = results.reduce(0) { $0 + $1 }
 		return BiqRecipeResult(total)
 	}
-
+	
 	static func recipeMediaSet(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -541,14 +541,14 @@ struct RecipeHandlers {
 		recipe.medium = medium
 		return BiqRecipeResult(recipe.medium.count)
 	}
-
+	
 	static func recipeMediaGet(session rs: RequestSession) throws -> [BiqRecipeMedia] {
 		guard let uri = rs.request.param(name: "uri"), let recipe = BiqRecipe(uri: uri) else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid recipe uri.")
 		}
 		return recipe.medium
 	}
-
+	
 	static func recipeThresholdAdd(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -561,7 +561,7 @@ struct RecipeHandlers {
 		let total = results.reduce(0) { $0 + $1 }
 		return BiqRecipeResult(total)
 	}
-
+	
 	static func recipeThresholdRemove(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -574,7 +574,7 @@ struct RecipeHandlers {
 		let total = results.reduce(0) { $0 + $1 }
 		return BiqRecipeResult(total)
 	}
-
+	
 	static func recipeThresholdSet(session rs: RequestSession) throws -> BiqRecipeResult {
 		guard let postBody = rs.request.postBodyBytes else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid post.")
@@ -586,7 +586,7 @@ struct RecipeHandlers {
 		recipe.thresholds = thresholds
 		return BiqRecipeResult(recipe.thresholds.count)
 	}
-
+	
 	static func recipeThresholdGet(session rs: RequestSession) throws -> [BiqThreshold] {
 		guard let uri = rs.request.param(name: "uri"), let recipe = BiqRecipe(uri: uri) else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid recipe uri.")
