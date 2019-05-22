@@ -16,6 +16,17 @@ import Foundation
 import PerfectPostgreSQL
 import PerfectCRUD
 
+/// qbiq sensor type
+public enum BiqSensorType: Int, Codable {
+	case temperature = 0
+	case humidity = 1
+	case brightness = 2
+	case movement = 3
+	case acceleration = 4
+	case battery = 5
+
+	public static let units: [String] = ["°C", "%", "%", "times", "g", "V"]
+}
 
 public struct BiqRecipeResult: Codable {
 	public let value: Int
@@ -24,12 +35,84 @@ public struct BiqRecipeResult: Codable {
 	}
 }
 
-/// qbiq recipe
-extension BiqRecipe: Comparable {
-	public static func == (lhs: BiqRecipe, rhs: BiqRecipe) -> Bool {
-		return lhs.uri == rhs.uri
-	}
+public struct BiqThreshold: Codable {
 
+	/// recipe id
+	public let uri: String
+
+	/// sensor type, must be unique in the same recipe
+	public let measurement: Int
+
+	/// lower range
+	public let low: Double
+
+	/// upper range
+	public let high: Double
+
+	/// effectiveness in this recipe
+	public var enabled: Bool
+
+	/// callstack order in this recipe
+	public var index: Int
+
+	public init(uri i: String, measurement m: BiqSensorType, low lo: Double, high hi: Double, enabled e: Bool, index inx: Int) {
+		uri = i; measurement = m.rawValue; low = lo; high = hi; enabled = e; index = inx
+	}
+}
+
+/// recipe media attachement type, such as icon, tone, animation, etc.
+public enum BiqRecipeMediaType: Int, Codable {
+
+	/// primary icon
+	case icon = 0
+
+	/// primary tone when triggered
+	case tone = 1
+
+	/// primary animation for future use
+	case animation = 2
+}
+
+
+/// recipe media attachement, such as icon, tone, animation, etc
+public struct BiqRecipeMedia: Codable {
+
+	/// recipe attached to
+	public let uri: String
+
+	/// name/title of the media, must be unique in the same recipe
+	public let title: String
+
+	/// MIME type string, for example, icon for `image/ico`, tone for `sound/wav` etc.
+	public let mime: String
+
+	/// binary data for the media
+	public let payload: Data
+
+	/// index type of this media, 0 for the primary logo
+	public let `type`: Int
+
+	/// default constructor
+	public init(uri i: String, title t: String, mime m: String, payload p: Data, `type` tp: BiqRecipeMediaType) {
+		uri = i; title = t; mime = m; payload = p; type = tp.rawValue
+	}
+}
+
+/// searchable tags
+public struct BiqRecipeTag: Codable {
+
+	/// recipe id
+	public let uri: String
+
+	/// tag string, must be unique in the same recipe
+	public let tag: String
+	public init(uri i: String, tag t: String) {
+		uri = i; tag = t
+	}
+}
+
+/// qbiq recipe
+public struct BiqRecipe: Codable, Comparable {
 
 	enum CodingKeys: String, CodingKey {
 		case uri
@@ -41,6 +124,18 @@ extension BiqRecipe: Comparable {
 		case thresholds
 		case medium
 	}
+
+	/// recipe id
+	public let uri: String
+
+	/// name / title
+	public let title: String
+
+	/// author / brand
+	public let author: String
+
+	/// short introduction
+	public let description: String
 
 	public init(from decoder: Decoder) throws {
 		let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -78,13 +173,23 @@ extension BiqRecipe: Comparable {
 		try container.encode(medium, forKey: .medium)
 	}
 
+	/// default constructor
+	public init(title t: String, author a: String, description d: String) {
+		title = t; author = a; description = d
+		if let urlencoded = "\(a)-\(title)".addingPercentEncoding(withAllowedCharacters: .urlHostAllowed)?.lowercased() {
+			uri = urlencoded
+		} else {
+			uri = UUID().uuidString
+		}
+	}
+
 	/// load an instance from database by its ID
 	public init?(uri i: String) {
 		guard let db = BiqRecipe.pdb else { return nil }
 		let table = db.table(BiqRecipe.self)
 		do {
 			if let record = try table.where(\BiqRecipe.uri == i).first() {
-				self = BiqRecipe(title: record.title, author: record.author, description: record.description)
+				uri = i; title = record.title; author = record.author; description = record.description
 			} else {
 				return nil
 			}
