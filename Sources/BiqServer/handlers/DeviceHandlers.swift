@@ -191,7 +191,7 @@ struct DeviceHandlers {
 		return p
 	}
 	
-	static func deviceTag(session rs: RequestSession) throws -> [BiqProfile] {
+	static func deviceTag(session rs: RequestSession) throws -> [BiqDevice] {
 		guard let pattern = rs.request.param(name: "with") else {
 			throw HTTPResponseError(status: .badRequest, description: "Invalid request.")
 		}
@@ -200,7 +200,7 @@ struct DeviceHandlers {
 		let likes = keys.map { "tag LIKE '%\($0)%'" }.joined(separator: " OR ")
 		let sql = "SELECT * FROM BiqDevice WHERE \(likes)";
 		let db = try biqDatabaseInfo.deviceDb()
-		return try db.sql(sql, BiqProfile.self)
+		return try db.sql(sql, BiqDevice.self)
 	}
 	
 	static func deviceFollowers(session rs: RequestSession) throws -> [String] {
