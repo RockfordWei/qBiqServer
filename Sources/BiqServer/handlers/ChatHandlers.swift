@@ -37,7 +37,7 @@ public struct ChatHandlers {
 					bindings: [
 						("$1", .string(record.topic)),
 						("$2", .string(uid)),
-						("$1", .string(record.content)),
+						("$3", .string(record.content)),
 			])
 		
 		let permission = try db.table(BiqDeviceAccessPermission.self)
