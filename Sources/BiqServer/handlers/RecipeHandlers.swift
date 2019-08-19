@@ -31,17 +31,18 @@ public struct Recipe: Codable, CustomStringConvertible {
 	public let tags: [String]?
 	public let comments: String?
 	public let payload: String?
+	public let active: Bool
 	public init(title t: String, company c: String,
 							createdAt cra: String, lastUpdate last: String, subtitle sub: String,
 							website web: String, companyWebsite cweb: String,
 							companyLogo clogo: String, logo mylogo: String,
 							description des: String, stars sta: Int,
 							tags tg:[String]? = nil, comments cmt: String? = nil,
-							payload paid: String? = nil) {
+							payload paid: String? = nil, active act: Bool = false) {
 		title = t; company = c; createdAt = cra; lastUpdate = last;
 		subtitle = sub; website = web; companyWebsite = cweb;
 		companyLogo = clogo; logo = mylogo; description = des;
-		stars = sta; tags = tg; comments = cmt; payload = paid
+		stars = sta; tags = tg; comments = cmt; payload = paid; active = act
 	}
 }
 
@@ -77,6 +78,6 @@ struct RecipeHandlers {
 		CRUDLogging.log(.query, sql)
 		let db = try biqDatabaseInfo.deviceDb()
 		let records = try db.sql(sql, Recipe.self)
-		return records
+		return records.filter { $0.active }
 	}
 }
