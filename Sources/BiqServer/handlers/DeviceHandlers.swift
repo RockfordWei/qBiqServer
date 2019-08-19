@@ -424,6 +424,14 @@ struct DeviceHandlers {
 			try db.table(BiqDeviceAccessPermission.self)
 				.where(\BiqDeviceAccessPermission.deviceId == deviceId)
 				.delete()
+
+			try db.table(BiqProfileTag.self)
+				.where(\BiqProfileTag.id == deviceId)
+				.delete()
+
+			try db.table(BiqProfile.self)
+				.where(\BiqProfile.id == deviceId)
+				.delete()
 		}
 		return EmptyReply()
 	}

@@ -62,16 +62,16 @@ struct RecipeHandlers {
 		}
 		var whereClause = ""
 		let blanks = CharacterSet(charactersIn: " \t\r\n")
-		let keywordstr = rs.request.params(named: "keywords")
-		let keywords = Set<String>(keywordstr
-				.map { String($0.trimmingCharacters(in: blanks)).lowercased() }
+		if let keywordstr = rs.request.param(name: "keywords") {
+			let keys = keywordstr.split(separator: " ").map { String($0) }
+			let keywords = Set<String>(keys.map { String($0.trimmingCharacters(in: blanks)).lowercased() }
 				.filter { $0.count > 2 })
-		if !keywordstr.isEmpty {
-			let likes = keywords.map {
-				"company LIKE '%\($0)%' OR title LIKE '%\($0)%' OR subtitle LIKE '%\($0)%' OR description LIKE '%\($0)%'"
-				}.joined(separator: " OR ")
-			let tags = keywords.map { "tags ?| array['\($0)']" }.joined(separator: " OR ")
-			whereClause = "WHERE \(likes) OR \(tags)"
+			if !keywordstr.isEmpty {
+				let likes = keywords.map {
+					"company LIKE '%\($0)%' OR title LIKE '%\($0)%' OR subtitle LIKE '%\($0)%' OR description LIKE '%\($0)%' OR tags LIKE '%\($0)%'"
+					}.joined(separator: " OR ")
+				whereClause = "WHERE \(likes)"
+			}
 		}
 		let sql = "SELECT * FROM Recipe \(whereClause) ORDER BY title, company ASC OFFSET \(page) LIMIT \(size)"
 		CRUDLogging.log(.query, sql)
